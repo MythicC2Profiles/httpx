@@ -205,6 +205,7 @@ func transformMessageFromServer(message []byte, variation AgentVariationConfig) 
 	result := message
 	var err error
 	for i := 0; i < len(variation.Server.Transforms); i++ {
+		//.LogInfo("configuring message from server", "transform", variation.Server.Transforms[i].Action)
 		switch strings.ToLower(variation.Server.Transforms[i].Action) {
 		case "base64":
 			result, err = transformBase64(result, variation.Server.Transforms[i].Value)
@@ -251,6 +252,7 @@ func transformMessageFromClient(message []byte, variation AgentVariationConfig) 
 	result := message
 	var err error
 	for i := len(variation.Client.Transforms) - 1; i >= 0; i-- {
+		//logging.LogInfo("getting message from client", "transform", variation.Client.Transforms[i].Action)
 		switch strings.ToLower(variation.Client.Transforms[i].Action) {
 		case "base64":
 			result, err = transformBase64Reverse(result, variation.Client.Transforms[i].Value)

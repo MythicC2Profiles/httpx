@@ -48,7 +48,7 @@ func transformAppendReverse(prev []byte, value string) ([]byte, error) {
 	if len(value) > len(prev) {
 		return nil, errors.New("append value is longer that full value")
 	}
-	return prev[:len(value)], nil
+	return prev[:len(prev)-len(value)], nil
 }
 
 func transformXor(prev []byte, value string) ([]byte, error) {
