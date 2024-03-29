@@ -2,3 +2,4 @@ http/c2_code/mythic_http_server
 main
 .idea
 .env
+mythic_httpx_server

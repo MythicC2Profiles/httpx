@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -205,7 +206,7 @@ func transformMessageFromServer(message []byte, variation AgentVariationConfig) 
 	result := message
 	var err error
 	for i := 0; i < len(variation.Server.Transforms); i++ {
-		//.LogInfo("configuring message from server", "transform", variation.Server.Transforms[i].Action)
+		//logging.LogInfo("configuring message from server", "transform", variation.Server.Transforms[i].Action)
 		switch strings.ToLower(variation.Server.Transforms[i].Action) {
 		case "base64":
 			result, err = transformBase64(result, variation.Server.Transforms[i].Value)
@@ -367,6 +368,7 @@ func proxyRequest(configInstance instanceConfig, proxy *httputil.ReverseProxy, v
 		}
 		resp.Body = io.NopCloser(bytes.NewBuffer(agentMessage))
 		resp.ContentLength = int64(len(agentMessage))
+		resp.Header.Set("Content-Length", strconv.Itoa(len(agentMessage)))
 		return nil
 	}
 	proxy.ModifyResponse = createResponseFunc
