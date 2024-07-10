@@ -9,7 +9,7 @@ on:
   #  types: [published]
   push:
     branches:
-      - 'master'
+      - 'Mythic3.3'
       - 'main'
     tags:
       - "v*.*.*"
@@ -36,7 +36,7 @@ env:
   VERSION: ${{ github.ref_name }}
   #VERSION: ${{ github.event.head_commit.message }}
 
-  RELEASE_BRANCH: main
+  RELEASE_BRANCH: Mythic3.3
 
 jobs:
   # Builds the base container image and pushes it to the container registry
