@@ -9,7 +9,7 @@ on:
   #  types: [published]
   push:
     branches:
-      - 'master'
+      - 'Mythic3.3'
       - 'main'
     tags:
       - "v*.*.*"
