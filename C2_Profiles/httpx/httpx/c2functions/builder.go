@@ -328,9 +328,7 @@ var httpxc2definition = c2structs.C2Profile{
 		for key, _ := range agentVariation.Get.Client.Parameters {
 			q.Add(key, agentVariation.Get.Client.Parameters[key])
 		}
-		if len(agentVariation.Get.Client.Parameters) > 0 {
-			reqGet.URL.RawQuery = q.Encode()
-		}
+		reqGet.URL.RawQuery = q.Encode()
 		dump, err := httputil.DumpRequest(reqGet, true)
 		response.Message += "GET Variation Client Message:\n" + fmt.Sprintf("%s\n\n", dump)
 		// get mock server response
@@ -405,9 +403,8 @@ var httpxc2definition = c2structs.C2Profile{
 		for key, _ := range agentVariation.Post.Client.Parameters {
 			qPost.Add(key, agentVariation.Post.Client.Parameters[key])
 		}
-		if len(agentVariation.Post.Client.Parameters) > 0 {
-			reqPost.URL.RawQuery = qPost.Encode()
-		}
+		reqPost.URL.RawQuery = qPost.Encode()
+
 		dumpPost, err := httputil.DumpRequest(reqPost, true)
 		response.Message += "POST Variation Client Message:\n" + fmt.Sprintf("%s\n\n", dumpPost)
 		serverResp, err = client.Get("http://test")
