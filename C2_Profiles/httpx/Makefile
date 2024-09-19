@@ -20,10 +20,8 @@ run:
 	cd httpx/c2_code && make run
 	./${BINARY_NAME}
 
-build_local:
-	CGO_ENABLED=0 go build -o ${BINARY_NAME} .
-
 run_custom:
+	CGO_ENABLED=0 go build -o ${BINARY_NAME} .
 	DEBUG_LEVEL=${DEBUG_LEVEL} \
 RABBITMQ_HOST=${RABBITMQ_HOST} \
 RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD} \

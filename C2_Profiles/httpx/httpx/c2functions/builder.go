@@ -212,6 +212,7 @@ var httpxc2definition = c2structs.C2Profile{
 			response.Error += fmt.Sprintf("Error getting agent_config: %v\n", err)
 			return response
 		}
+		response.Message = "Everything matches and looks good!"
 		return response
 	},
 	GetRedirectorRulesFunction: func(message c2structs.C2GetRedirectorRuleMessage) c2structs.C2GetRedirectorRuleMessageResponse {
@@ -297,6 +298,7 @@ var httpxc2definition = c2structs.C2Profile{
 			response.Error += fmt.Sprintf("Error simulating client get request: %v\n", err)
 			return response
 		}
+		q := reqGet.URL.Query()
 		switch agentVariation.Get.Client.Message.Location {
 		case "cookie":
 			reqGet.AddCookie(&http.Cookie{
@@ -304,7 +306,7 @@ var httpxc2definition = c2structs.C2Profile{
 				Value: string(agentMessageGetTransformed),
 			})
 		case "query":
-			reqGet.Form.Set(agentVariation.Get.Client.Message.Name, string(agentMessageGetTransformed))
+			q.Add(agentVariation.Get.Client.Message.Name, string(agentMessageGetTransformed))
 		case "header":
 			reqGet.Header.Set(agentVariation.Get.Client.Message.Name, string(agentMessageGetTransformed))
 		default:
@@ -322,7 +324,7 @@ var httpxc2definition = c2structs.C2Profile{
 			}
 		}
 		// adding query parameters is a little weird in go
-		q := reqGet.URL.Query()
+
 		for key, _ := range agentVariation.Get.Client.Parameters {
 			q.Add(key, agentVariation.Get.Client.Parameters[key])
 		}
@@ -367,12 +369,13 @@ var httpxc2definition = c2structs.C2Profile{
 			bodyBytes = make([]byte, 0)
 		}
 		bodyBuffer = bytes.NewBuffer(bodyBytes)
-		reqPost, err := http.NewRequest(agentVariation.Get.Verb, domains[0]+agentVariation.Post.URI, bodyBuffer)
+		reqPost, err := http.NewRequest(agentVariation.Post.Verb, domains[0]+agentVariation.Post.URI, bodyBuffer)
 		if err != nil {
 			response.Success = false
 			response.Error += fmt.Sprintf("Error simulating client post request: %v\n", err)
 			return response
 		}
+		qPost := reqPost.URL.Query()
 		switch agentVariation.Post.Client.Message.Location {
 		case "cookie":
 			reqPost.AddCookie(&http.Cookie{
@@ -380,7 +383,7 @@ var httpxc2definition = c2structs.C2Profile{
 				Value: string(agentMessagePostTransformed),
 			})
 		case "query":
-			reqPost.Form.Set(agentVariation.Post.Client.Message.Name, string(agentMessagePostTransformed))
+			qPost.Add(agentVariation.Post.Client.Message.Name, string(agentMessagePostTransformed))
 		case "header":
 			reqPost.Header.Set(agentVariation.Post.Client.Message.Name, string(agentMessagePostTransformed))
 		default:
@@ -398,7 +401,7 @@ var httpxc2definition = c2structs.C2Profile{
 			}
 		}
 		// adding query parameters is a little weird in go
-		qPost := reqPost.URL.Query()
+
 		for key, _ := range agentVariation.Post.Client.Parameters {
 			qPost.Add(key, agentVariation.Post.Client.Parameters[key])
 		}
