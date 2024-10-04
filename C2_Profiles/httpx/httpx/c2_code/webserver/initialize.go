@@ -308,13 +308,9 @@ func getMessageFromClient(req *http.Request, variation AgentVariationConfig) ([]
 		}
 		return transformMessageFromClient([]byte(cookie.Value), variation)
 	case "query":
-		err := req.ParseForm()
-		if err != nil {
-			logging.LogError(err, "Failed to parse form")
-			return nil, err
-		}
-		if req.Form.Has(variation.Client.Message.Name) {
-			param := req.Form.Get(variation.Client.Message.Name)
+		params := req.URL.Query()
+		if params.Has(variation.Client.Message.Name) {
+			param := params.Get(variation.Client.Message.Name)
 			return transformMessageFromClient([]byte(param), variation)
 		}
 		return nil, errors.New("failed to find form variable")
