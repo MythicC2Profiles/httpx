@@ -98,7 +98,7 @@ func writeAgentJsonConfig(cfg map[string]AgentVariations) error {
 
 var validLocations = []string{"cookie", "query", "header", "body", ""}
 var validActions = []string{"base64", "base64url", "netbios", "netbiosu", "xor", "prepend", "append"}
-var version = "0.0.1"
+var version = "0.0.2"
 var httpxc2definition = c2structs.C2Profile{
 	Name:             "httpx",
 	Author:           "@its_a_feature_",
@@ -205,27 +205,45 @@ var httpxc2definition = c2structs.C2Profile{
 			response.Error += fmt.Sprintf("Error getting agent_config: %v\n", err)
 			return response
 		}
+		for name, _ := range currentAgentConfig {
+			if name == agentVariation.Name {
+				continue // allow overriding our own config name without issue
+			}
+			if currentAgentConfig[name].Get.URI == agentVariation.Get.URI ||
+				currentAgentConfig[name].Post.URI == agentVariation.Get.URI {
+				response.Success = false
+				response.Error += fmt.Sprintf("Config '%s' already uses Get URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, agentVariation.Get.URI, name)
+				return response
+			}
+			if currentAgentConfig[name].Get.URI == agentVariation.Post.URI ||
+				currentAgentConfig[name].Post.URI == agentVariation.Post.URI {
+				response.Success = false
+				response.Error += fmt.Sprintf("Config '%s' already Post URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, agentVariation.Post.URI, name)
+				return response
+			}
+		}
 		currentAgentConfig[agentVariation.Name] = agentVariation
 		err = writeAgentJsonConfig(currentAgentConfig)
 		if err != nil {
 			response.Success = false
-			response.Error += fmt.Sprintf("Error getting agent_config: %v\n", err)
+			response.Error += fmt.Sprintf("Error writing agent_config: %v\n", err)
 			return response
 		}
 		response.Message = "Everything matches and looks good!"
+		response.RestartInternalServer = true
 		return response
 	},
 	GetRedirectorRulesFunction: func(message c2structs.C2GetRedirectorRuleMessage) c2structs.C2GetRedirectorRuleMessageResponse {
 		response := c2structs.C2GetRedirectorRuleMessageResponse{
 			Success: true,
-			Message: fmt.Sprintf("Called redirector status check:\n%v", message),
+			Message: fmt.Sprintf("Called redirector status check:\nNot currently generating redirection rules"),
 		}
 		return response
 	},
 	OPSECCheckFunction: func(message c2structs.C2OPSECMessage) c2structs.C2OPSECMessageResponse {
 		response := c2structs.C2OPSECMessageResponse{
 			Success: true,
-			Message: fmt.Sprintf("Called opsec check:\n%v", message),
+			Message: fmt.Sprintf("Called opsec check:\nNot currently checking opsec considerations"),
 		}
 		return response
 
@@ -337,7 +355,7 @@ var httpxc2definition = c2structs.C2Profile{
 		}))
 		defer server.Close()
 		client := server.Client()
-		serverResp, err := client.Get("http://test")
+		serverResp, err := client.Get(server.URL)
 		if err != nil {
 			response.Success = false
 			response.Error += fmt.Sprintf("Error simulating server get response: %v\n\n", err)
@@ -407,7 +425,7 @@ var httpxc2definition = c2structs.C2Profile{
 
 		dumpPost, err := httputil.DumpRequest(reqPost, true)
 		response.Message += "POST Variation Client Message:\n" + fmt.Sprintf("%s\n\n", dumpPost)
-		serverResp, err = client.Get("http://test")
+		serverResp, err = client.Post(server.URL, "application/text", bodyBuffer)
 		if err != nil {
 			response.Success = false
 			response.Error += fmt.Sprintf("Error simulating server post response: %v\n\n", err)
@@ -442,7 +460,20 @@ var httpxc2definition = c2structs.C2Profile{
 			if config.Instances[i].PayloadHostPaths == nil {
 				config.Instances[i].PayloadHostPaths = make(map[string]string)
 			}
-			config.Instances[i].PayloadHostPaths[message.HostURL] = message.FileUUID
+			if message.Remove {
+				if message.HostURL != "" {
+					delete(config.Instances[i].PayloadHostPaths, message.HostURL)
+				} else {
+					for j, _ := range config.Instances[i].PayloadHostPaths {
+						if config.Instances[i].PayloadHostPaths[j] == message.FileUUID {
+							delete(config.Instances[i].PayloadHostPaths, j)
+						}
+					}
+				}
+			} else {
+				config.Instances[i].PayloadHostPaths[message.HostURL] = message.FileUUID
+			}
+
 		}
 		err = writeC2JsonConfig(config)
 		if err != nil {
@@ -452,7 +483,8 @@ var httpxc2definition = c2structs.C2Profile{
 			}
 		}
 		return c2structs.C2HostFileMessageResponse{
-			Success: true,
+			Success:               true,
+			RestartInternalServer: true,
 		}
 	},
 }
