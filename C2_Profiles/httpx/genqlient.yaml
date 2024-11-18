@@ -1,0 +1,13 @@
+# Default genqlient config; for full documentation see:
+# https://github.com/Khan/genqlient/blob/main/docs/genqlient.yaml
+# go run github.com/Khan/genqlient
+#   ^ this re-generates generated.go with updated definitions
+schema: schema.graphql
+operations:
+  - "httpx/c2functions/graphql_queries.go"
+generated: httpx/c2functions/generated.go
+bindings:
+  DateTime:
+    type: time.Time
+  jsonb:
+    type: map[string]interface{}

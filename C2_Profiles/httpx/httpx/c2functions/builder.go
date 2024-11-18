@@ -1,12 +1,16 @@
 package c2functions
 
 import (
+	"MyContainer/httpx/mythicGraphql"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	c2structs "github.com/MythicMeta/MythicContainer/c2_structs"
 	"github.com/MythicMeta/MythicContainer/logging"
 	"github.com/MythicMeta/MythicContainer/mythicrpc"
+	"github.com/MythicMeta/MythicContainer/utils/sharedStructs"
 	"github.com/pelletier/go-toml"
 	"golang.org/x/exp/slices"
 	"io"
@@ -119,114 +123,10 @@ var httpxc2definition = c2structs.C2Profile{
 			response.Error += fmt.Sprintf("Error getting agent_config: %v\n", err)
 			return response
 		}
-		agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(mythicrpc.MythicRPCFileGetContentMessage{
-			AgentFileID: agentConfigFileID,
-		})
+		err = validateAndUpdateConfig(agentConfigFileID)
 		if err != nil {
 			response.Success = false
-			response.Error += fmt.Sprintf("Error getting agent_config: %v\n", err)
-			return response
-		}
-		if !agentConfigContents.Success {
-			response.Success = false
-			response.Error += fmt.Sprintf("Error getting agent_config: %s\n", agentConfigContents.Error)
-			return response
-		}
-		agentVariation := AgentVariations{}
-		err = json.Unmarshal(agentConfigContents.Content, &agentVariation)
-		if err != nil {
-			err2 := toml.Unmarshal(agentConfigContents.Content, &agentVariation)
-			if err2 != nil {
-				response.Success = false
-				response.Error += fmt.Sprintf("Error parsing agent config: %v\n%v\n", err, err2)
-				return response
-			}
-		}
-		if agentVariation.Name == "" {
-			response.Success = false
-			response.Error += fmt.Sprintf("Missing name for agent variation")
-			return response
-		}
-		if !slices.Contains(validLocations, agentVariation.Get.Client.Message.Location) {
-			response.Success = false
-			response.Error += fmt.Sprintf("Missing invalid message location for GET")
-			return response
-		}
-		if !slices.Contains([]string{"body", ""}, agentVariation.Get.Client.Message.Location) {
-			if agentVariation.Get.Client.Message.Name == "" {
-				response.Success = false
-				response.Error += fmt.Sprintf("Missing name for agent GET variation location")
-				return response
-			}
-		}
-		if !slices.Contains(validLocations, agentVariation.Post.Client.Message.Location) {
-			response.Success = false
-			response.Error += fmt.Sprintf("Missing invalid message location for POST")
-			return response
-		}
-		if !slices.Contains([]string{"body", ""}, agentVariation.Post.Client.Message.Location) {
-			if agentVariation.Post.Client.Message.Name == "" {
-				response.Success = false
-				response.Error += fmt.Sprintf("Missing name for agent POST variation location")
-				return response
-			}
-		}
-		for i, _ := range agentVariation.Get.Client.Transforms {
-			if !slices.Contains(validActions, agentVariation.Get.Client.Transforms[i].Action) {
-				response.Success = false
-				response.Error += fmt.Sprintf("invalid client GET transform action: %s\n", agentVariation.Get.Client.Transforms[i].Action)
-				return response
-			}
-		}
-		for i, _ := range agentVariation.Get.Server.Transforms {
-			if !slices.Contains(validActions, agentVariation.Get.Server.Transforms[i].Action) {
-				response.Success = false
-				response.Error += fmt.Sprintf("invalid server GET transform action: %s\n", agentVariation.Get.Server.Transforms[i].Action)
-				return response
-			}
-		}
-		for i, _ := range agentVariation.Post.Client.Transforms {
-			if !slices.Contains(validActions, agentVariation.Post.Client.Transforms[i].Action) {
-				response.Success = false
-				response.Error += fmt.Sprintf("invalid client POST transform action: %s\n", agentVariation.Post.Client.Transforms[i].Action)
-				return response
-			}
-		}
-		for i, _ := range agentVariation.Post.Server.Transforms {
-			if !slices.Contains(validActions, agentVariation.Post.Server.Transforms[i].Action) {
-				response.Success = false
-				response.Error += fmt.Sprintf("invalid server POST transform action: %s\n", agentVariation.Post.Server.Transforms[i].Action)
-				return response
-			}
-		}
-		currentAgentConfig, err := getAgentJsonConfig()
-		if err != nil {
-			response.Success = false
-			response.Error += fmt.Sprintf("Error getting agent_config: %v\n", err)
-			return response
-		}
-		for name, _ := range currentAgentConfig {
-			if name == agentVariation.Name {
-				continue // allow overriding our own config name without issue
-			}
-			if currentAgentConfig[name].Get.URI == agentVariation.Get.URI ||
-				currentAgentConfig[name].Post.URI == agentVariation.Get.URI {
-				response.Success = false
-				response.Error += fmt.Sprintf("Config '%s' already uses Get URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, agentVariation.Get.URI, name)
-				return response
-			}
-			if currentAgentConfig[name].Get.URI == agentVariation.Post.URI ||
-				currentAgentConfig[name].Post.URI == agentVariation.Post.URI {
-				response.Success = false
-				response.Error += fmt.Sprintf("Config '%s' already Post URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, agentVariation.Post.URI, name)
-				return response
-			}
-		}
-		currentAgentConfig[agentVariation.Name] = agentVariation
-		err = writeAgentJsonConfig(currentAgentConfig)
-		if err != nil {
-			response.Success = false
-			response.Error += fmt.Sprintf("Error writing agent_config: %v\n", err)
+			response.Error = err.Error()
 			return response
 		}
 		response.Message = "Everything matches and looks good!"
@@ -461,19 +361,14 @@ var httpxc2definition = c2structs.C2Profile{
 				config.Instances[i].PayloadHostPaths = make(map[string]string)
 			}
 			if message.Remove {
-				if message.HostURL != "" {
-					delete(config.Instances[i].PayloadHostPaths, message.HostURL)
-				} else {
-					for j, _ := range config.Instances[i].PayloadHostPaths {
-						if config.Instances[i].PayloadHostPaths[j] == message.FileUUID {
-							delete(config.Instances[i].PayloadHostPaths, j)
-						}
+				for j, _ := range config.Instances[i].PayloadHostPaths {
+					if config.Instances[i].PayloadHostPaths[j] == message.FileUUID {
+						delete(config.Instances[i].PayloadHostPaths, j)
 					}
 				}
 			} else {
 				config.Instances[i].PayloadHostPaths[message.HostURL] = message.FileUUID
 			}
-
 		}
 		err = writeC2JsonConfig(config)
 		if err != nil {
@@ -486,6 +381,28 @@ var httpxc2definition = c2structs.C2Profile{
 			Success:               true,
 			RestartInternalServer: true,
 		}
+	},
+	OnContainerStartFunction: func(message sharedStructs.ContainerOnStartMessage) sharedStructs.ContainerOnStartMessageResponse {
+		response := sharedStructs.ContainerOnStartMessageResponse{}
+		logging.LogInfo("called onStart function", "operation", message.OperationName)
+		client := mythicGraphql.NewClient("https://127.0.0.1:7443/graphql/", message.APIToken)
+		payloads, err := GetPayloadsQuery(context.Background(), client)
+		if err != nil {
+			response.EventLogErrorMessage = fmt.Sprintf("Failed to fetch payloads: %v\n", err)
+			return response
+		}
+		for _, payload := range payloads.GetPayload() {
+			for _, c2param := range payload.GetC2profileparametersinstances() {
+				if c2param.C2profileparameter.Name == "raw_c2_config" {
+					err = validateAndUpdateConfig(c2param.Value)
+					if err != nil {
+						response.EventLogErrorMessage += err.Error() + "\n"
+					}
+				}
+			}
+		}
+		response.RestartInternalServer = true
+		return response
 	},
 }
 var httpxc2parameters = []c2structs.C2Parameter{
@@ -562,6 +479,87 @@ var httpxc2parameters = []c2structs.C2Parameter{
 	},
 }
 
+func validateAndUpdateConfig(agentConfigFileID string) error {
+	agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(mythicrpc.MythicRPCFileGetContentMessage{
+		AgentFileID: agentConfigFileID,
+	})
+	if err != nil {
+		return errors.New(fmt.Sprintf("Error getting agent_config: %v\n", err))
+	}
+	if !agentConfigContents.Success {
+		return errors.New(fmt.Sprintf("Error getting agent_config: %s\n", agentConfigContents.Error))
+	}
+	agentVariation := AgentVariations{}
+	err = json.Unmarshal(agentConfigContents.Content, &agentVariation)
+	if err != nil {
+		err2 := toml.Unmarshal(agentConfigContents.Content, &agentVariation)
+		if err2 != nil {
+			return errors.New(fmt.Sprintf("Error parsing agent config: %v\n%v\n", err, err2))
+		}
+	}
+	if agentVariation.Name == "" {
+		return errors.New(fmt.Sprintf("Missing name for agent variation"))
+	}
+	if !slices.Contains(validLocations, agentVariation.Get.Client.Message.Location) {
+		return errors.New(fmt.Sprintf("Missing invalid message location for GET"))
+	}
+	if !slices.Contains([]string{"body", ""}, agentVariation.Get.Client.Message.Location) {
+		if agentVariation.Get.Client.Message.Name == "" {
+			return errors.New(fmt.Sprintf("Missing name for agent GET variation location"))
+		}
+	}
+	if !slices.Contains(validLocations, agentVariation.Post.Client.Message.Location) {
+		return errors.New(fmt.Sprintf("Missing invalid message location for POST"))
+	}
+	if !slices.Contains([]string{"body", ""}, agentVariation.Post.Client.Message.Location) {
+		if agentVariation.Post.Client.Message.Name == "" {
+			return errors.New(fmt.Sprintf("Missing name for agent POST variation location"))
+		}
+	}
+	for i, _ := range agentVariation.Get.Client.Transforms {
+		if !slices.Contains(validActions, agentVariation.Get.Client.Transforms[i].Action) {
+			return errors.New(fmt.Sprintf("invalid client GET transform action: %s\n", agentVariation.Get.Client.Transforms[i].Action))
+		}
+	}
+	for i, _ := range agentVariation.Get.Server.Transforms {
+		if !slices.Contains(validActions, agentVariation.Get.Server.Transforms[i].Action) {
+			return errors.New(fmt.Sprintf("invalid server GET transform action: %s\n", agentVariation.Get.Server.Transforms[i].Action))
+		}
+	}
+	for i, _ := range agentVariation.Post.Client.Transforms {
+		if !slices.Contains(validActions, agentVariation.Post.Client.Transforms[i].Action) {
+			return errors.New(fmt.Sprintf("invalid client POST transform action: %s\n", agentVariation.Post.Client.Transforms[i].Action))
+		}
+	}
+	for i, _ := range agentVariation.Post.Server.Transforms {
+		if !slices.Contains(validActions, agentVariation.Post.Server.Transforms[i].Action) {
+			return errors.New(fmt.Sprintf("invalid server POST transform action: %s\n", agentVariation.Post.Server.Transforms[i].Action))
+		}
+	}
+	currentAgentConfig, err := getAgentJsonConfig()
+	if err != nil {
+		return errors.New(fmt.Sprintf("Error getting agent_config: %v\n", err))
+	}
+	for name, _ := range currentAgentConfig {
+		if name == agentVariation.Name {
+			continue // allow overriding our own config name without issue
+		}
+		if currentAgentConfig[name].Get.URI == agentVariation.Get.URI ||
+			currentAgentConfig[name].Post.URI == agentVariation.Get.URI {
+			return errors.New(fmt.Sprintf("Config '%s' already uses Get URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, agentVariation.Get.URI, name))
+		}
+		if currentAgentConfig[name].Get.URI == agentVariation.Post.URI ||
+			currentAgentConfig[name].Post.URI == agentVariation.Post.URI {
+			return errors.New(fmt.Sprintf("Config '%s' already Post URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, agentVariation.Post.URI, name))
+		}
+	}
+	currentAgentConfig[agentVariation.Name] = agentVariation
+	err = writeAgentJsonConfig(currentAgentConfig)
+	if err != nil {
+		return errors.New(fmt.Sprintf("Error writing agent_config: %v\n", err))
+	}
+	return nil
+}
 func Initialize() {
 	c2structs.AllC2Data.Get("httpx").AddC2Definition(httpxc2definition)
 	c2structs.AllC2Data.Get("httpx").AddParameters(httpxc2parameters)
