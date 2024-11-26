@@ -6,14 +6,8 @@
       "cert_path": "fullchain.pem",
       "debug": false,
       "use_ssl": false,
-      "ServerHeaders": {
-        "Cache-Control": "max-age=0, no-cache",
-        "Connection": "keep-alive",
-        "Content-Type": "application/javascript; charset=utf-8",
-        "Pragma": "no-cache",
-        "Server": "NetDNA-cache/2.2"
-      },
-      "payloads": {}
+      "payloads": {},
+      "bind_ip": ""
     }
   ]
 }

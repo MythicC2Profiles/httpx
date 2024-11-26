@@ -13,8 +13,26 @@ import (
 //
 // columns and relationships of "payload"
 type GetPayloadsQueryPayload struct {
+	// An object relationship
+	Payloadtype GetPayloadsQueryPayloadPayloadtype `json:"payloadtype"`
+	Description string                             `json:"description"`
+	// An object relationship
+	Filemetum GetPayloadsQueryPayloadFilemetumFilemeta `json:"filemetum"`
 	// An array relationship
 	C2profileparametersinstances []GetPayloadsQueryPayloadC2profileparametersinstancesC2profileparametersinstance `json:"c2profileparametersinstances"`
+}
+
+// GetPayloadtype returns GetPayloadsQueryPayload.Payloadtype, and is useful for accessing the field via an interface.
+func (v *GetPayloadsQueryPayload) GetPayloadtype() GetPayloadsQueryPayloadPayloadtype {
+	return v.Payloadtype
+}
+
+// GetDescription returns GetPayloadsQueryPayload.Description, and is useful for accessing the field via an interface.
+func (v *GetPayloadsQueryPayload) GetDescription() string { return v.Description }
+
+// GetFilemetum returns GetPayloadsQueryPayload.Filemetum, and is useful for accessing the field via an interface.
+func (v *GetPayloadsQueryPayload) GetFilemetum() GetPayloadsQueryPayloadFilemetumFilemeta {
+	return v.Filemetum
 }
 
 // GetC2profileparametersinstances returns GetPayloadsQueryPayload.C2profileparametersinstances, and is useful for accessing the field via an interface.
@@ -55,6 +73,29 @@ func (v *GetPayloadsQueryPayloadC2profileparametersinstancesC2profileparametersi
 	return v.Name
 }
 
+// GetPayloadsQueryPayloadFilemetumFilemeta includes the requested fields of the GraphQL type filemeta.
+// The GraphQL type's documentation follows.
+//
+// columns and relationships of "filemeta"
+type GetPayloadsQueryPayloadFilemetumFilemeta struct {
+	// A computed field, executes function "filemeta_filename_utf8"
+	Filename_utf8 string `json:"filename_utf8"`
+}
+
+// GetFilename_utf8 returns GetPayloadsQueryPayloadFilemetumFilemeta.Filename_utf8, and is useful for accessing the field via an interface.
+func (v *GetPayloadsQueryPayloadFilemetumFilemeta) GetFilename_utf8() string { return v.Filename_utf8 }
+
+// GetPayloadsQueryPayloadPayloadtype includes the requested fields of the GraphQL type payloadtype.
+// The GraphQL type's documentation follows.
+//
+// columns and relationships of "payloadtype"
+type GetPayloadsQueryPayloadPayloadtype struct {
+	Name string `json:"name"`
+}
+
+// GetName returns GetPayloadsQueryPayloadPayloadtype.Name, and is useful for accessing the field via an interface.
+func (v *GetPayloadsQueryPayloadPayloadtype) GetName() string { return v.Name }
+
 // GetPayloadsQueryResponse is returned by GetPayloadsQuery on success.
 type GetPayloadsQueryResponse struct {
 	// fetch data from the table: "payload"
@@ -68,6 +109,13 @@ func (v *GetPayloadsQueryResponse) GetPayload() []GetPayloadsQueryPayload { retu
 const GetPayloadsQuery_Operation = `
 query GetPayloadsQuery {
 	payload(where: {build_phase:{_eq:"success"},deleted:{_eq:false},c2profileparametersinstances:{c2profile:{name:{_eq:"httpx"}}}}) {
+		payloadtype {
+			name
+		}
+		description
+		filemetum {
+			filename_utf8
+		}
 		c2profileparametersinstances(where: {c2profile:{name:{_eq:"httpx"}}}) {
 			value
 			c2profileparameter {

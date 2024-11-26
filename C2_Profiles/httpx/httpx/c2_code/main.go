@@ -15,7 +15,6 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
-
 	for index, instance := range webserver.Config.Instances {
 		logging.LogInfo("Initializing webserver", "instance", index+1)
 		router := webserver.Initialize(instance)

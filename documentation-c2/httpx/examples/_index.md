@@ -19,10 +19,10 @@ name = "TEST"
 ##      GET is used to poll teamserver for tasks
 ## Defaults:
 ##    verb "GET" <-- "GET" or "POST"
-##    uri "/activity" <-- string
+##    uris ["/activity"] <-- array of strings randomly chosen each time
 [get]
 verb = "GET"
-uri = "/my/uri/path"
+uris = ["/my/uri/path"]
 
 ################################################
 ## CLIENT
@@ -32,6 +32,9 @@ uri = "/my/uri/path"
 ## Defaults:
 ##    headers <-- dictionary of key/value pairs
 ##      set with client.headers.Key = value
+##    domain_specific_headers <-- dictionary of dictionaries of key/value pairs
+##          Allows setting headers specific to callback hosts
+##      set with client.domain_specific_headers."domain".key = value
 ##    parameters <-- dictionary of key/value pairs
 ##      set with client.parameters.Key = value
 ##    message <-- dictionary of key/value pairs about the message the agent is sending to the server
@@ -45,6 +48,8 @@ uri = "/my/uri/path"
 [get.client]
 headers."User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
 parameters.MyKey = "value"
+[get.client.domain_specific_headers."https://example.com:443"]
+User-Agent = "Test"
 [get.client.message]
 location = "cookie"
 name = "sessionID"
@@ -90,7 +95,7 @@ value = "\"}"
 # {"survey_data": "someBase64Here"}
 
 [post]
-uri = "/my/other/path"
+uris = ["/my/other/path"]
 verb = "POST"
 [post.client.headers]
 "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
@@ -113,6 +118,102 @@ action = "netbios"
 # netbios encoded data
 ```
 
+## Mimic HTTP profile defaults
+
+```toml
+# Server and agent have to agree on formats or comms won't work
+# ideally pre-load server configurations into profile, at creation time just select saved instance and provide _extra_ info
+
+
+name = "HTTP-DEFAULT"
+################################################
+## HTTP GET
+################################################
+## Description:
+##      GET is used to poll teamserver for tasks
+## Defaults:
+##    verb "GET" <-- "GET" or "POST"
+##    uris ["/activity"] <-- string array
+[get]
+verb = "GET"
+uris = ["/index"]
+
+################################################
+## CLIENT
+################################################
+## Description:
+##      client identifies data going from the agent to the server
+## Defaults:
+##    headers <-- dictionary of key/value pairs
+##      set with client.headers.Key = value
+##    domain_specific_headers <-- dictionary of dictionaries of key/value pairs
+##          Allows setting headers specific to callback hosts
+##      set with client.domain_specific_headers."domain".key = value
+##    parameters <-- dictionary of key/value pairs
+##      set with client.parameters.Key = value
+##    message <-- dictionary of key/value pairs about the message the agent is sending to the server
+##      location "cookie" <-- where to place the final message
+##          valid locations are: 'cookie', 'body', 'uri', 'query'
+##      name <-- name of cookie, query, or uri
+##      transforms <-- array of transforms to do on the message
+##          action <-- what transform action to take
+##              valid actions are: 'base64', 'base64url', 'prepend', 'append', 'xor', 'netbios', 'netbiosu'
+##          value <-- string value to use as a parameter when performing 'action'
+[get.client]
+headers."User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
+[get.client.message]
+location = "query"
+name = "q"
+
+# SENDS:
+# GET /index?q=value
+# User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36
+
+################################################
+## SERVER
+################################################
+## Description:
+##      server identifies data going from the server back to the agent
+## Defaults:
+##    headers <-- dictionary of key/value pairs
+##      set with server.headers.Key = value
+##    domain_specific_headers <-- dictionary of dictionaries of key/value pairs
+##          Allows setting headers specific to callback hosts
+##      set with client.domain_specific_headers."domain".key = value
+##    parameters <-- dictionary of key/value pairs
+##      set with server.parameters.Key = value
+##    message <-- dictionary of key/value pairs about the message the server is sending back to the agent
+##      The final message will always be in the body of the response
+##      transforms <-- array of transforms to do on the message
+##          action <-- what transform action to take
+##              valid actions are: 'base64', 'base64url', 'prepend', 'append', 'xor', 'netbios', 'netbiosu'
+##          value <-- string value to use as a parameter when performing 'action'
+[get.server.headers]
+Server = "Server"
+Cache-Control = "max-age=0, no-cache"
+
+# Sends
+# Server: Server
+# Cache-Control: max-age=0, no-cache
+#
+
+[post]
+uris = ["/data"]
+verb = "POST"
+[post.client.headers]
+"User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
+
+# Sends
+# POST /data"
+# User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36
+
+[post.server.headers]
+Keep-Alive = "true"
+
+# Sends
+# Keep-Alive: true
+
+```
 ## jquery-c2.4.9.profile
 This is an example from https://github.com/threatexpress/malleable-c2/blob/master/jquery-c2.4.9.profile that's made for cobalt strike.
 We can pretty easily convert this for `httpx` into TOML as follows:
@@ -131,7 +232,7 @@ name = "jQuery CS 4.9 Profile"
 
 [get]
 verb = "GET"
-uri = "/jquery-3.3.1.min.js"
+uris = ["/jquery-3.3.1.min.js"]
 
 [get.client.headers]
 "Keep-Alive" = "timeout=10, max=100"
@@ -169,7 +270,7 @@ action = "append"
 value = "\".(o=t.documentElement,Math.max(t.body[\"scroll\"+e],o[\"scroll\"+e],t.body[\"offset\"+e],o[\"offset\"+e],o[\"client\"+e])):void 0===i?w.css(t,n,s):w.style(t,n,i,s)},t,a?i:void 0,a)}})}),w.each(\"blur focus focusin focusout resize scroll click dblclick mousedown mouseup mousemove mouseover mouseout mouseenter mouseleave change select submit keydown keypress keyup contextmenu\".split(\" \"),function(e,t){w.fn[t]=function(e,n){return arguments.length>0?this.on(t,null,e,n):this.trigger(t)}}),w.fn.extend({hover:function(e,t){return this.mouseenter(e).mouseleave(t||e)}}),w.fn.extend({bind:function(e,t,n){return this.on(e,null,t,n)},unbind:function(e,t){return this.off(e,null,t)},delegate:function(e,t,n,r){return this.on(t,e,n,r)},undelegate:function(e,t,n){return 1===arguments.length?this.off(e,\"**\"):this.off(t,e||\"**\",n)}}),w.proxy=function(e,t){var n,r,i;if(\"string\"==typeof t&&(n=e[t],t=e,e=n),g(e))return r=o.call(arguments,2),i=function(){return e.apply(t||this,r.concat(o.call(arguments)))},i.guid=e.guid=e.guid||w.guid++,i},w.holdReady=function(e){e?w.readyWait++:w.ready(!0)},w.isArray=Array.isArray,w.parseJSON=JSON.parse,w.nodeName=N,w.isFunction=g,w.isWindow=y,w.camelCase=G,w.type=x,w.now=Date.now,w.isNumeric=function(e){var t=w.type(e);return(\"number\"===t||\"string\"===t)&&!isNaN(e-parseFloat(e))},\"function\"==typeof define&&define.amd&&define(\"jquery\",[],function(){return w});var Jt=e.jQuery,Kt=e.$;return w.noConflict=function(t){return e.$===w&&(e.$=Kt),t&&e.jQuery===w&&(e.jQuery=Jt),w},t||(e.jQuery=e.$=w),w});"
 
 [post]
-uri = "/jquery-3.3.2.min.js"
+uris = ["/jquery-3.3.2.min.js"]
 verb = "POST"
 
 [post.client.headers]
@@ -215,7 +316,7 @@ Similarly, in JSON that would be:
   "name": "jQuery CS 4.9 Profile",
   "get": {
     "verb": "GET",
-    "uri": "/jquery-3.3.1.min.js",
+    "uris": ["/jquery-3.3.1.min.js"],
     "client": {
       "headers": {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -271,7 +372,7 @@ Similarly, in JSON that would be:
   },
   "post": {
     "verb": "POST",
-    "uri": "/jquery-3.3.2.min.js",
+    "uris": ["/jquery-3.3.2.min.js"],
     "client": {
       "headers": {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

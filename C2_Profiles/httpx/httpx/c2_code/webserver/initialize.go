@@ -143,15 +143,17 @@ func setRoutes(r *gin.Engine, configInstance instanceConfig) {
 				MaxIdleConns:    10,
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			}}
-		logging.LogInfo("Setting Agent Config GET",
-			"verb", variation.Get.Verb,
-			"uri", variation.Get.URI,
-			"location", variation.Get.Client.Message.Location,
-			"name", variation.Get.Client.Message.Name)
-		if variation.Get.Verb == "GET" {
-			r.GET(variation.Get.URI, proxyRequest(configInstance, getProxy, variation.Get))
-		} else {
-			r.POST(variation.Get.URI, proxyRequest(configInstance, getProxy, variation.Get))
+		for _, uri := range variation.Get.URIs {
+			logging.LogInfo("Setting Agent Config GET",
+				"verb", variation.Get.Verb,
+				"uri", uri,
+				"location", variation.Get.Client.Message.Location,
+				"name", variation.Get.Client.Message.Name)
+			if variation.Get.Verb == "GET" {
+				r.GET(uri, proxyRequest(configInstance, getProxy, variation.Get))
+			} else {
+				r.POST(uri, proxyRequest(configInstance, getProxy, variation.Get))
+			}
 		}
 		postProxy := &httputil.ReverseProxy{
 			Transport: &http.Transport{
@@ -161,16 +163,19 @@ func setRoutes(r *gin.Engine, configInstance instanceConfig) {
 				MaxIdleConns:    10,
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			}}
-		logging.LogInfo("Setting Agent Config POST",
-			"verb", variation.Post.Verb,
-			"uri", variation.Post.URI,
-			"location", variation.Post.Client.Message.Location,
-			"name", variation.Post.Client.Message.Location)
-		if variation.Post.Verb == "GET" {
-			r.GET(variation.Post.URI, proxyRequest(configInstance, postProxy, variation.Post))
-		} else {
-			r.POST(variation.Post.URI, proxyRequest(configInstance, postProxy, variation.Post))
+		for _, uri := range variation.Post.URIs {
+			logging.LogInfo("Setting Agent Config POST",
+				"verb", variation.Post.Verb,
+				"uri", uri,
+				"location", variation.Post.Client.Message.Location,
+				"name", variation.Post.Client.Message.Location)
+			if variation.Post.Verb == "GET" {
+				r.GET(uri, proxyRequest(configInstance, postProxy, variation.Post))
+			} else {
+				r.POST(uri, proxyRequest(configInstance, postProxy, variation.Post))
+			}
 		}
+
 	}
 	if len(configInstance.PayloadHostPaths) > 0 {
 		for path, value := range configInstance.PayloadHostPaths {

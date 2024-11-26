@@ -42,10 +42,11 @@ type AgentVariationConfigMessage struct {
 	Name     string `json:"name" toml:"name"`
 }
 type AgentVariationConfigClient struct {
-	Headers    map[string]string                      `json:"headers" toml:"headers"`
-	Parameters map[string]string                      `json:"parameters" toml:"parameters"`
-	Message    AgentVariationConfigMessage            `json:"message" toml:"message"`
-	Transforms []AgentVariationConfigMessageTransform `json:"transforms" toml:"transforms"`
+	Headers               map[string]string                      `json:"headers" toml:"headers"`
+	Parameters            map[string]string                      `json:"parameters" toml:"parameters"`
+	DomainSpecificHeaders map[string]map[string]string           `json:"domain_specific_headers" toml:"domain_specific_headers"`
+	Message               AgentVariationConfigMessage            `json:"message" toml:"message"`
+	Transforms            []AgentVariationConfigMessageTransform `json:"transforms" toml:"transforms"`
 }
 type AgentVariationConfigServer struct {
 	Headers    map[string]string                      `json:"headers" toml:"headers"`
@@ -53,7 +54,7 @@ type AgentVariationConfigServer struct {
 }
 type AgentVariationConfig struct {
 	Verb   string                     `json:"verb" toml:"verb"`
-	URI    string                     `json:"uri" toml:"uri"`
+	URIs   []string                   `json:"uris" toml:"uris"`
 	Client AgentVariationConfigClient `json:"client" toml:"client"`
 	Server AgentVariationConfigServer `json:"server" toml:"server"`
 }
@@ -102,11 +103,11 @@ func writeAgentJsonConfig(cfg map[string]AgentVariations) error {
 
 var validLocations = []string{"cookie", "query", "header", "body", ""}
 var validActions = []string{"base64", "base64url", "netbios", "netbiosu", "xor", "prepend", "append"}
-var version = "0.0.2"
+var version = "0.0.3"
 var httpxc2definition = c2structs.C2Profile{
 	Name:             "httpx",
 	Author:           "@its_a_feature_",
-	Description:      fmt.Sprintf("CURRENTLY IN BETA! Crowdsourced and community driven HTTP profile with lots of variation options. Version: %s", version),
+	Description:      fmt.Sprintf("Crowdsourced and community driven HTTP profile with lots of variation options. Version: %s", version),
 	IsP2p:            false,
 	IsServerRouted:   true,
 	ServerBinaryPath: filepath.Join(".", "httpx", "c2_code", "mythic_httpx_server"),
@@ -210,7 +211,7 @@ var httpxc2definition = c2structs.C2Profile{
 			return response
 		}
 		// get message
-		reqGet, err := http.NewRequest(agentVariation.Get.Verb, domains[0]+agentVariation.Get.URI, nil)
+		reqGet, err := http.NewRequest(agentVariation.Get.Verb, domains[0]+agentVariation.Get.URIs[0], nil)
 		if err != nil {
 			response.Success = false
 			response.Error += fmt.Sprintf("Error simulating client get request: %v\n", err)
@@ -285,7 +286,7 @@ var httpxc2definition = c2structs.C2Profile{
 			bodyBytes = make([]byte, 0)
 		}
 		bodyBuffer = bytes.NewBuffer(bodyBytes)
-		reqPost, err := http.NewRequest(agentVariation.Post.Verb, domains[0]+agentVariation.Post.URI, bodyBuffer)
+		reqPost, err := http.NewRequest(agentVariation.Post.Verb, domains[0]+agentVariation.Post.URIs[0], bodyBuffer)
 		if err != nil {
 			response.Success = false
 			response.Error += fmt.Sprintf("Error simulating client post request: %v\n", err)
@@ -396,7 +397,11 @@ var httpxc2definition = c2structs.C2Profile{
 				if c2param.C2profileparameter.Name == "raw_c2_config" {
 					err = validateAndUpdateConfig(c2param.Value)
 					if err != nil {
-						response.EventLogErrorMessage += err.Error() + "\n"
+						response.EventLogErrorMessage += fmt.Sprintf("%s (%s) - %s:\n\t%s\n",
+							payload.Filemetum.Filename_utf8,
+							payload.Payloadtype.Name,
+							payload.Description,
+							err.Error())
 					}
 				}
 			}
@@ -427,6 +432,7 @@ var httpxc2parameters = []c2structs.C2Parameter{
 		Choices: []string{
 			"fail-over",
 			"round-robin",
+			"random",
 		},
 	},
 	{
@@ -536,6 +542,12 @@ func validateAndUpdateConfig(agentConfigFileID string) error {
 			return errors.New(fmt.Sprintf("invalid server POST transform action: %s\n", agentVariation.Post.Server.Transforms[i].Action))
 		}
 	}
+	if len(agentVariation.Get.URIs) == 0 {
+		return errors.New(fmt.Sprintf("Missing URIs array for agent GET variation"))
+	}
+	if len(agentVariation.Post.URIs) == 0 {
+		return errors.New(fmt.Sprintf("Missing URIs array for agent POST variation"))
+	}
 	currentAgentConfig, err := getAgentJsonConfig()
 	if err != nil {
 		return errors.New(fmt.Sprintf("Error getting agent_config: %v\n", err))
@@ -544,13 +556,21 @@ func validateAndUpdateConfig(agentConfigFileID string) error {
 		if name == agentVariation.Name {
 			continue // allow overriding our own config name without issue
 		}
-		if currentAgentConfig[name].Get.URI == agentVariation.Get.URI ||
-			currentAgentConfig[name].Post.URI == agentVariation.Get.URI {
-			return errors.New(fmt.Sprintf("Config '%s' already uses Get URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, agentVariation.Get.URI, name))
+		for _, uri := range agentVariation.Get.URIs {
+			if slices.Contains(currentAgentConfig[name].Get.URIs, uri) {
+				return errors.New(fmt.Sprintf("Config '%s' already uses Get URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
+			}
+			if slices.Contains(currentAgentConfig[name].Post.URIs, uri) {
+				return errors.New(fmt.Sprintf("Config '%s' already uses Get URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
+			}
 		}
-		if currentAgentConfig[name].Get.URI == agentVariation.Post.URI ||
-			currentAgentConfig[name].Post.URI == agentVariation.Post.URI {
-			return errors.New(fmt.Sprintf("Config '%s' already Post URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, agentVariation.Post.URI, name))
+		for _, uri := range agentVariation.Post.URIs {
+			if slices.Contains(currentAgentConfig[name].Get.URIs, uri) {
+				return errors.New(fmt.Sprintf("Config '%s' already uses Post URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
+			}
+			if slices.Contains(currentAgentConfig[name].Post.URIs, uri) {
+				return errors.New(fmt.Sprintf("Config '%s' already uses Post URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
+			}
 		}
 	}
 	currentAgentConfig[agentVariation.Name] = agentVariation

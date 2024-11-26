@@ -31,7 +31,7 @@ type AgentVariationConfigServer struct {
 }
 type AgentVariationConfig struct {
 	Verb   string                     `json:"verb" toml:"verb"`
-	URI    string                     `json:"uri" toml:"uri"`
+	URIs   []string                   `json:"uris" toml:"uris"`
 	Client AgentVariationConfigClient `json:"client" toml:"client"`
 	Server AgentVariationConfigServer `json:"server" toml:"server"`
 }

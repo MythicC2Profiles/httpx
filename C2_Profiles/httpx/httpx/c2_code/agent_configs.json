@@ -3,7 +3,7 @@
     "name": "jQuery CS 4.9 Profile",
     "get": {
       "verb": "GET",
-      "uri": "/jquery-3.3.1.min.js",
+      "uris": ["/jquery-3.3.1.min.js"],
       "client": {
         "headers": {
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -59,7 +59,7 @@
     },
     "post": {
       "verb": "POST",
-      "uri": "/jquery-3.3.2.min.js",
+      "uris": ["/jquery-3.3.2.min.js"],
       "client": {
         "headers": {
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
