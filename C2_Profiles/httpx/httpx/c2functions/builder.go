@@ -19,6 +19,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type config struct {
@@ -137,8 +138,113 @@ var httpxc2definition = c2structs.C2Profile{
 	GetRedirectorRulesFunction: func(message c2structs.C2GetRedirectorRuleMessage) c2structs.C2GetRedirectorRuleMessageResponse {
 		response := c2structs.C2GetRedirectorRuleMessageResponse{
 			Success: true,
-			Message: fmt.Sprintf("Called redirector status check:\nNot currently generating redirection rules"),
+			Message: fmt.Sprintf("Called redirector status check:\n%v", message),
 		}
+		agentConfigFileID, err := message.GetFileArg("raw_c2_config")
+		if err != nil {
+			response.Success = false
+			response.Error += fmt.Sprintf("Error getting agent_config: %v\n", err)
+			return response
+		}
+		agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(mythicrpc.MythicRPCFileGetContentMessage{
+			AgentFileID: agentConfigFileID,
+		})
+		if err != nil {
+			response.Success = false
+			response.Error += fmt.Sprintf("Error getting agent_config: %v\n", err)
+			return response
+		}
+		if !agentConfigContents.Success {
+			response.Success = false
+			response.Error += fmt.Sprintf("Error getting agent_config: %s\n", agentConfigContents.Error)
+			return response
+		}
+		agentVariation := AgentVariations{}
+		err = json.Unmarshal(agentConfigContents.Content, &agentVariation)
+		if err != nil {
+			err2 := toml.Unmarshal(agentConfigContents.Content, &agentVariation)
+			if err2 != nil {
+				response.Success = false
+				response.Error += fmt.Sprintf("Error parsing agent config: %v\n%v\n", err, err2)
+				return response
+			}
+		}
+		output := "#mod_rewrite rules generated from @AndrewChiles' project https://github.com/threatexpress/mythic2modrewrite:\n"
+		getUA := ""
+		for key, val := range agentVariation.Get.Client.Headers {
+			if key == "User-Agent" {
+				getUA = val
+			}
+		}
+		postUA := ""
+		for key, val := range agentVariation.Post.Client.Headers {
+			if key == "User-Agent" {
+				postUA = val
+			}
+		}
+		// Create UA in modrewrite syntax. No regex needed in UA string matching, but () characters must be escaped
+		getUAString := strings.ReplaceAll(getUA, "(", "\\(")
+		getUAString = strings.ReplaceAll(getUAString, ")", "\\)")
+		postUAString := strings.ReplaceAll(postUA, "(", "\\(")
+		postUAString = strings.ReplaceAll(postUAString, ")", "\\)")
+		// Create URI string in modrewrite syntax. "*" are needed in regex to support GET and uri-append parameters on the URI
+		geturisString := strings.Join(agentVariation.Get.URIs, ".*|") + ".*"
+		posturisString := strings.Join(agentVariation.Post.URIs, ".*|") + ".*"
+		c2RewriteOutput := []string{}
+		currentConfig, err := getC2JsonConfig()
+		if err != nil {
+			logging.LogError(err, "Failed to get current json configuration")
+			response.Error = "Failed to get current json configuration"
+			response.Success = false
+			return response
+		}
+		c2RewriteTemplate := "RewriteRule ^.*$ \"%s%%{REQUEST_URI}\" [P,L]"
+		for _, instance := range currentConfig.Instances {
+			if instance.UseSSL {
+				serverURL := fmt.Sprintf("https://C2_SERVER_HERE:%d", instance.Port)
+				c2RewriteOutput = append(c2RewriteOutput, fmt.Sprintf(c2RewriteTemplate, serverURL))
+			} else {
+				serverURL := fmt.Sprintf("http://C2_SERVER_HERE:%d", instance.Port)
+				c2RewriteOutput = append(c2RewriteOutput, fmt.Sprintf(c2RewriteTemplate, serverURL))
+			}
+		}
+
+		output += "#\tReplace 'C2_SERVER_HERE' with the IP/Domain address of where matching traffic should go\n"
+
+		htaccessTemplate := `
+########################################
+## .htaccess START
+RewriteEngine On
+## C2 Traffic (HTTP-GET, HTTP-POST, HTTP-STAGER URIs)
+## Logic: If a requested URI AND the User-Agent matches, proxy the connection to the Teamserver
+## Consider adding other HTTP checks to fine tune the check.  (HTTP Cookie, HTTP Referer, HTTP Query String, etc)
+## Refer to http://httpd.apache.org/docs/current/mod/mod_rewrite.html
+%s
+## Redirect all other traffic here
+RewriteRule ^.*$ redirect/? [L,R=302]
+## .htaccess END
+########################################
+		`
+		htaccessConditionTemplate := `
+## Only allow GET and POST methods to pass to the C2 server
+RewriteCond %%{REQUEST_METHOD} ^(%s) [NC]
+## Profile URIs
+RewriteCond %%{REQUEST_URI} ^(%s)$
+## Profile UserAgent
+RewriteCond %%{HTTP_USER_AGENT} "%s"`
+		gethtaccessConditions := fmt.Sprintf(htaccessConditionTemplate, "GET", geturisString, getUAString)
+		allHtaccessConditions := ""
+		for _, c2Entry := range c2RewriteOutput {
+			allHtaccessConditions += gethtaccessConditions + "\n" + c2Entry + "\n"
+		}
+		posthtaccessConditions := fmt.Sprintf(htaccessConditionTemplate, "POST", posturisString, postUAString)
+		for _, c2Entry := range c2RewriteOutput {
+			allHtaccessConditions += posthtaccessConditions + "\n" + c2Entry + "\n"
+		}
+		htaccess := fmt.Sprintf(htaccessTemplate, allHtaccessConditions)
+		output += "#\tReplace 'redirect' with the http(s) address of where non-matching traffic should go, ex: https://redirect.com\n"
+		output += "\n" + htaccess
+		response.Message = output
 		return response
 	},
 	OPSECCheckFunction: func(message c2structs.C2OPSECMessage) c2structs.C2OPSECMessageResponse {
@@ -151,7 +257,77 @@ var httpxc2definition = c2structs.C2Profile{
 	},
 	GetIOCFunction: func(message c2structs.C2GetIOCMessage) c2structs.C2GetIOCMessageResponse {
 		response := c2structs.C2GetIOCMessageResponse{Success: true}
-
+		agentConfigFileID, err := message.GetFileArg("raw_c2_config")
+		if err != nil {
+			response.Success = false
+			response.Error += fmt.Sprintf("Error getting agent_config: %v\n", err)
+			return response
+		}
+		agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(mythicrpc.MythicRPCFileGetContentMessage{
+			AgentFileID: agentConfigFileID,
+		})
+		if err != nil {
+			response.Success = false
+			response.Error += fmt.Sprintf("Error getting agent_config: %v\n", err)
+			return response
+		}
+		if !agentConfigContents.Success {
+			response.Success = false
+			response.Error += fmt.Sprintf("Error getting agent_config: %s\n", agentConfigContents.Error)
+			return response
+		}
+		agentVariation := AgentVariations{}
+		err = json.Unmarshal(agentConfigContents.Content, &agentVariation)
+		if err != nil {
+			err2 := toml.Unmarshal(agentConfigContents.Content, &agentVariation)
+			if err2 != nil {
+				response.Success = false
+				response.Error += fmt.Sprintf("Error parsing agent config: %v\n%v\n", err, err2)
+				return response
+			}
+		}
+		domains, err := message.GetArrayArg("callback_domains")
+		if err != nil {
+			response.Success = false
+			response.Error += fmt.Sprintf("Error getting callback domains: %v\n%v", err, message)
+			return response
+		}
+		for _, domain := range domains {
+			for _, uri := range agentVariation.Get.URIs {
+				queryParamString := ""
+				queryParams := []string{}
+				for paramKey, paramVal := range agentVariation.Get.Client.Parameters {
+					queryParams = append(queryParams, fmt.Sprintf("%s=%s", paramKey, paramVal))
+				}
+				if agentVariation.Get.Client.Message.Location == "query" {
+					queryParams = append(queryParams, fmt.Sprintf("%s=", agentVariation.Get.Client.Message.Name))
+				}
+				if len(queryParams) > 0 {
+					queryParamString = fmt.Sprintf("?%s", strings.Join(queryParams, "&"))
+				}
+				response.IOCs = append(response.IOCs, c2structs.IOC{
+					Type: "url",
+					IOC:  fmt.Sprintf("%s%s%s", domain, uri, queryParamString),
+				})
+			}
+			for _, uri := range agentVariation.Post.URIs {
+				queryParamString := ""
+				queryParams := []string{}
+				for paramKey, paramVal := range agentVariation.Post.Client.Parameters {
+					queryParams = append(queryParams, fmt.Sprintf("%s=%s", paramKey, paramVal))
+				}
+				if agentVariation.Post.Client.Message.Location == "query" {
+					queryParams = append(queryParams, fmt.Sprintf("%s=", agentVariation.Post.Client.Message.Name))
+				}
+				if len(queryParams) > 0 {
+					queryParamString = fmt.Sprintf("?%s", strings.Join(queryParams, "&"))
+				}
+				response.IOCs = append(response.IOCs, c2structs.IOC{
+					Type: "url",
+					IOC:  fmt.Sprintf("%s%s%s", domain, uri, queryParamString),
+				})
+			}
+		}
 		return response
 	},
 	SampleMessageFunction: func(message c2structs.C2SampleMessageMessage) c2structs.C2SampleMessageResponse {

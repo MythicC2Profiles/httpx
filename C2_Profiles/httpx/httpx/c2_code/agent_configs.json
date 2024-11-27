@@ -3,7 +3,9 @@
     "name": "jQuery CS 4.9 Profile",
     "get": {
       "verb": "GET",
-      "uris": ["/jquery-3.3.1.min.js"],
+      "uris": [
+        "/jquery-3.3.1.min.js"
+      ],
       "client": {
         "headers": {
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -14,6 +16,7 @@
           "User-Agent": "Mozilla/5.0 (Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko"
         },
         "parameters": null,
+        "domain_specific_headers": null,
         "message": {
           "location": "cookie",
           "name": "__cfduid"
@@ -59,7 +62,9 @@
     },
     "post": {
       "verb": "POST",
-      "uris": ["/jquery-3.3.2.min.js"],
+      "uris": [
+        "/jquery-3.3.2.min.js"
+      ],
       "client": {
         "headers": {
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -67,6 +72,7 @@
           "Referer": "http://code.jquery.com/"
         },
         "parameters": null,
+        "domain_specific_headers": null,
         "message": {
           "location": "body",
           "name": ""
