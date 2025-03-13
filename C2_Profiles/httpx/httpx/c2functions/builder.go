@@ -104,7 +104,7 @@ func writeAgentJsonConfig(cfg map[string]AgentVariations) error {
 
 var validLocations = []string{"cookie", "query", "header", "body", ""}
 var validActions = []string{"base64", "base64url", "netbios", "netbiosu", "xor", "prepend", "append"}
-var version = "0.0.3"
+var version = "0.0.4"
 var httpxc2definition = c2structs.C2Profile{
 	Name:             "httpx",
 	Author:           "@its_a_feature_",
@@ -726,7 +726,7 @@ func validateAndUpdateConfig(agentConfigFileID string) error {
 	}
 	currentAgentConfig, err := getAgentJsonConfig()
 	if err != nil {
-		return errors.New(fmt.Sprintf("Error getting agent_config: %v\n", err))
+		return errors.New(fmt.Sprintf("Error getting agent_configs.json: %v\n", err))
 	}
 	for name, _ := range currentAgentConfig {
 		if name == agentVariation.Name {
@@ -734,25 +734,25 @@ func validateAndUpdateConfig(agentConfigFileID string) error {
 		}
 		for _, uri := range agentVariation.Get.URIs {
 			if slices.Contains(currentAgentConfig[name].Get.URIs, uri) {
-				return errors.New(fmt.Sprintf("Config '%s' already uses Get URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
+				return errors.New(fmt.Sprintf("Config '%s' already uses Get URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please delete all payloads that use it and remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
 			}
 			if slices.Contains(currentAgentConfig[name].Post.URIs, uri) {
-				return errors.New(fmt.Sprintf("Config '%s' already uses Get URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
+				return errors.New(fmt.Sprintf("Config '%s' already uses Get URI '%s' in POST requests! Aborting!\n\nIf '%s' is no longer needed, please delete all payloads that use it and remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
 			}
 		}
 		for _, uri := range agentVariation.Post.URIs {
 			if slices.Contains(currentAgentConfig[name].Get.URIs, uri) {
-				return errors.New(fmt.Sprintf("Config '%s' already uses Post URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
+				return errors.New(fmt.Sprintf("Config '%s' already uses Post URI '%s' in GET requests! Aborting!\n\nIf '%s' is no longer needed, please delete all payloads that use it and remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
 			}
 			if slices.Contains(currentAgentConfig[name].Post.URIs, uri) {
-				return errors.New(fmt.Sprintf("Config '%s' already uses Post URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
+				return errors.New(fmt.Sprintf("Config '%s' already uses Post URI '%s'! Aborting!\n\nIf '%s' is no longer needed, please delete all payloads that use it and remove it from 'agent_configs.json' through the C2 Profiles page and clicking the paperclip icon to edit files.", name, uri, name))
 			}
 		}
 	}
 	currentAgentConfig[agentVariation.Name] = agentVariation
 	err = writeAgentJsonConfig(currentAgentConfig)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Error writing agent_config: %v\n", err))
+		return errors.New(fmt.Sprintf("Error writing agent_configs.json: %v\n", err))
 	}
 	return nil
 }

@@ -9,7 +9,7 @@ GraphQL queries here are used to generate Go code and placed in `generated.go`.
 
 const GetPayloads = `# @genqlient
   query GetPayloadsQuery {
-      payload(where: {build_phase: {_eq: "success"}, deleted: {_eq: false}, c2profileparametersinstances: {c2profile: {name: {_eq: "httpx"}}}}) {
+      payload(order_by: {id: asc}, where: {build_phase: {_eq: "success"}, deleted: {_eq: false}, c2profileparametersinstances: {c2profile: {name: {_eq: "httpx"}}}}) {
 		payloadtype {
 			name
 		}

@@ -105,10 +105,10 @@ type GetPayloadsQueryResponse struct {
 // GetPayload returns GetPayloadsQueryResponse.Payload, and is useful for accessing the field via an interface.
 func (v *GetPayloadsQueryResponse) GetPayload() []GetPayloadsQueryPayload { return v.Payload }
 
-// The query or mutation executed by GetPayloadsQuery.
+// The query executed by GetPayloadsQuery.
 const GetPayloadsQuery_Operation = `
 query GetPayloadsQuery {
-	payload(where: {build_phase:{_eq:"success"},deleted:{_eq:false},c2profileparametersinstances:{c2profile:{name:{_eq:"httpx"}}}}) {
+	payload(order_by: {id:asc}, where: {build_phase:{_eq:"success"},deleted:{_eq:false},c2profileparametersinstances:{c2profile:{name:{_eq:"httpx"}}}}) {
 		payloadtype {
 			name
 		}
@@ -129,15 +129,14 @@ query GetPayloadsQuery {
 func GetPayloadsQuery(
 	ctx_ context.Context,
 	client_ graphql.Client,
-) (*GetPayloadsQueryResponse, error) {
+) (data_ *GetPayloadsQueryResponse, err_ error) {
 	req_ := &graphql.Request{
 		OpName: "GetPayloadsQuery",
 		Query:  GetPayloadsQuery_Operation,
 	}
-	var err_ error
 
-	var data_ GetPayloadsQueryResponse
-	resp_ := &graphql.Response{Data: &data_}
+	data_ = &GetPayloadsQueryResponse{}
+	resp_ := &graphql.Response{Data: data_}
 
 	err_ = client_.MakeRequest(
 		ctx_,
@@ -145,5 +144,5 @@ func GetPayloadsQuery(
 		resp_,
 	)
 
-	return &data_, err_
+	return data_, err_
 }

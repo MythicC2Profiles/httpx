@@ -1,13 +1,14 @@
 {
-  "instances": [
-    {
-      "port": 82,
-      "key_path": "privkey.pem",
-      "cert_path": "fullchain.pem",
-      "debug": false,
-      "use_ssl": false,
-      "payloads": {},
-      "bind_ip": ""
-    }
-  ]
+    "instances": [
+        {
+            "port": 82,
+            "key_path": "privkey.pem",
+            "cert_path": "fullchain.pem",
+            "debug": false,
+            "use_ssl": false,
+            "payloads": {
+            },
+            "bind_ip": "0.0.0.0"
+        }
+    ]
 }
