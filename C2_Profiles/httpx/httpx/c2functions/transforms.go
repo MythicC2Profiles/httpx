@@ -30,7 +30,7 @@ func transformBase64URLReverse(prev []byte, value string) ([]byte, error) {
         if err == nil {
                 return decoded[:actualDecoded], nil
         }
-        decodedLength := base64.RawURLEncoding.DecodedLen(len(prev))
+        decodedLength = base64.RawURLEncoding.DecodedLen(len(prev))
         decoded = make([]byte, decodedLength)
         actualDecoded, err = base64.RawURLEncoding.Decode(decoded, prev)
         if err != nil {
