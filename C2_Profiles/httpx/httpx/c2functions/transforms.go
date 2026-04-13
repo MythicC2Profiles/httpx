@@ -23,7 +23,6 @@ func transformBase64Reverse(prev []byte, value string) ([]byte, error) {
 func transformBase64URL(prev []byte, value string) ([]byte, error) {
 	return []byte(base64.URLEncoding.EncodeToString(prev)), nil
 }
-}
 func transformBase64URLReverse(prev []byte, value string) ([]byte, error) {
         decodedLength := base64.URLEncoding.DecodedLen(len(prev))
         decoded := make([]byte, decodedLength)
