@@ -22,13 +22,23 @@ func transformBase64URL(prev []byte, value string) ([]byte, error) {
 	return []byte(base64.URLEncoding.EncodeToString(prev)), nil
 }
 func transformBase64URLReverse(prev []byte, value string) ([]byte, error) {
-	decodedLength := base64.URLEncoding.DecodedLen(len(prev))
-	decoded := make([]byte, decodedLength)
-	actualDecoded, err := base64.URLEncoding.Decode(decoded, prev)
-	if err != nil {
+	if len(prev) > 0 && prev[len(prev)-1] == '=' {
+		decodedLength := base64.URLEncoding.DecodedLen(len(prev))
+		decoded := make([]byte, decodedLength)
+		actualDecoded, err := base64.URLEncoding.Decode(decoded, prev)
+		if err == nil {
+			return decoded[:actualDecoded], nil
+		}
+		return nil, err
+	} else {
+		decodedLength := base64.RawURLEncoding.DecodedLen(len(prev))
+		decoded := make([]byte, decodedLength)
+		actualDecoded, err := base64.RawURLEncoding.Decode(decoded, prev)
+		if err == nil {
+			return decoded[:actualDecoded], nil	
+		}
 		return nil, err
 	}
-	return decoded[:actualDecoded], nil
 }
 
 func transformPrepend(prev []byte, value string) ([]byte, error) {
