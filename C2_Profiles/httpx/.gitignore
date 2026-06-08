@@ -3,3 +3,4 @@ main
 .idea
 .env
 mythic_httpx_server
+httpx/c2_code/presets/
