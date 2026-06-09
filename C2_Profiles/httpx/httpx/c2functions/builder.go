@@ -223,13 +223,13 @@ func rawC2ConfigSchema() map[string]interface{} {
 
 	clientFields := []interface{}{
 		messageField,
-		map[string]interface{}{"name": "headers", "type": "string_map", "label": "HTTP Headers", "keyLabel": "Header", "valueLabel": "Value"},
-		map[string]interface{}{"name": "parameters", "type": "string_map", "label": "Query Parameters", "keyLabel": "Name", "valueLabel": "Value"},
+		map[string]interface{}{"name": "headers", "type": "string_map", "label": "HTTP Headers", "key_label": "Header", "value_label": "Value"},
+		map[string]interface{}{"name": "parameters", "type": "string_map", "label": "Query Parameters", "key_label": "Name", "value_label": "Value"},
 		map[string]interface{}{"name": "transforms", "type": "array", "label": "Transforms", "items": transformItem},
 	}
 
 	serverFields := []interface{}{
-		map[string]interface{}{"name": "headers", "type": "string_map", "label": "HTTP Headers", "keyLabel": "Header", "valueLabel": "Value"},
+		map[string]interface{}{"name": "headers", "type": "string_map", "label": "HTTP Headers", "key_label": "Header", "value_label": "Value"},
 		map[string]interface{}{"name": "transforms", "type": "array", "label": "Transforms", "items": transformItem},
 	}
 
