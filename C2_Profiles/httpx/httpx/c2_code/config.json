@@ -1,14 +1,17 @@
 {
-    "instances": [
-        {
-            "port": 443,
-            "key_path": "privkey.pem",
-            "cert_path": "fullchain.pem",
-            "debug": false,
-            "use_ssl": true,
-            "payloads": {
-            },
-            "bind_ip": "0.0.0.0"
-        }
-    ]
+  "instances": [
+    {
+      "port": 82,
+      "key_path": "privkey.pem",
+      "cert_path": "fullchain.pem",
+      "debug": false,
+      "use_ssl": false,
+      "payloads": {
+        "/coookies": "ab9a87bc-8607-4047-a6aa-61719e2c28ef",
+        "/cooooooooookies": "ab9a87bc-8607-4047-a6aa-61719e2c28ef",
+        "/test": "9e1bed1f-eb33-4fda-8c90-d8ec9c2b3534"
+      },
+      "bind_ip": "0.0.0.0"
+    }
+  ]
 }

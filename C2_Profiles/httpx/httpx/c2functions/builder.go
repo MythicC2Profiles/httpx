@@ -296,7 +296,7 @@ var httpxc2definition = c2structs.C2Profile{
 	IsP2p:            false,
 	IsServerRouted:   true,
 	ServerBinaryPath: filepath.Join(".", "httpx", "c2_code", "mythic_httpx_server"),
-	ConfigCheckFunction: func(message c2structs.C2ConfigCheckMessage) c2structs.C2ConfigCheckMessageResponse {
+	ConfigCheckFunction: func(ctx context.Context, message c2structs.C2ConfigCheckMessage) c2structs.C2ConfigCheckMessageResponse {
 		response := c2structs.C2ConfigCheckMessageResponse{
 			Success: true,
 			Message: fmt.Sprintf("Called config check\n%v", message),
@@ -307,7 +307,7 @@ var httpxc2definition = c2structs.C2Profile{
 		if err != nil {
 			agentConfig = ""
 		}
-		err = validateAndUpdateConfig(agentConfig)
+		err = validateAndUpdateConfig(ctx, agentConfigFileID)
 		if err != nil {
 			response.Success = false
 			response.Error = err.Error()
@@ -317,7 +317,7 @@ var httpxc2definition = c2structs.C2Profile{
 		response.RestartInternalServer = true
 		return response
 	},
-	GetRedirectorRulesFunction: func(message c2structs.C2GetRedirectorRuleMessage) c2structs.C2GetRedirectorRuleMessageResponse {
+	GetRedirectorRulesFunction: func(ctx context.Context, message c2structs.C2GetRedirectorRuleMessage) c2structs.C2GetRedirectorRuleMessageResponse {
 		response := c2structs.C2GetRedirectorRuleMessageResponse{
 			Success: true,
 			Message: fmt.Sprintf("Called redirector status check:\n%v", message),
@@ -327,6 +327,9 @@ var httpxc2definition = c2structs.C2Profile{
 			agentConfig = ""
 		}
 		agentVariation, err := parseInlineAgentVariation(agentConfig)
+		agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
+			AgentFileID: agentConfigFileID,
+		})
 		if err != nil {
 			response.Success = false
 			response.Error += err.Error()
@@ -414,7 +417,7 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 		response.Message = output
 		return response
 	},
-	OPSECCheckFunction: func(message c2structs.C2OPSECMessage) c2structs.C2OPSECMessageResponse {
+	OPSECCheckFunction: func(ctx context.Context, message c2structs.C2OPSECMessage) c2structs.C2OPSECMessageResponse {
 		response := c2structs.C2OPSECMessageResponse{
 			Success: true,
 			Message: fmt.Sprintf("Called opsec check:\nNot currently checking opsec considerations"),
@@ -422,13 +425,16 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 		return response
 
 	},
-	GetIOCFunction: func(message c2structs.C2GetIOCMessage) c2structs.C2GetIOCMessageResponse {
+	GetIOCFunction: func(ctx context.Context, message c2structs.C2GetIOCMessage) c2structs.C2GetIOCMessageResponse {
 		response := c2structs.C2GetIOCMessageResponse{Success: true}
 		agentConfig, err := message.GetStringArg("raw_c2_config")
 		if err != nil {
 			agentConfig = ""
 		}
 		agentVariation, err := parseInlineAgentVariation(agentConfig)
+		agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
+			AgentFileID: agentConfigFileID,
+		})
 		if err != nil {
 			response.Success = false
 			response.Error += err.Error()
@@ -478,13 +484,16 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 		}
 		return response
 	},
-	SampleMessageFunction: func(message c2structs.C2SampleMessageMessage) c2structs.C2SampleMessageResponse {
+	SampleMessageFunction: func(ctx context.Context, message c2structs.C2SampleMessageMessage) c2structs.C2SampleMessageResponse {
 		response := c2structs.C2SampleMessageResponse{Success: true, Message: "\n"}
 		agentConfig, err := message.GetStringArg("raw_c2_config")
 		if err != nil {
 			agentConfig = ""
 		}
 		agentVariation, err := parseInlineAgentVariation(agentConfig)
+		agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
+			AgentFileID: agentConfigFileID,
+		})
 		if err != nil {
 			response.Success = false
 			response.Error += err.Error()
@@ -653,45 +662,58 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 		response.Message += "POST Variation Server Response:\n" + fmt.Sprintf("%s\n\n", dump)
 		return response
 	},
-	HostFileFunction: func(message c2structs.C2HostFileMessage) c2structs.C2HostFileMessageResponse {
+	HostFileFunction: func(ctx context.Context, message c2structs.C2HostFilesMessage) c2structs.C2HostFilesMessageResponse {
+		response := c2structs.C2HostFilesMessageResponse{
+			Success: true,
+			Results: make([]c2structs.C2HostFileMessageResponse, 0, len(message.Files)),
+		}
 		config, err := getC2JsonConfig()
 		if err != nil {
-			return c2structs.C2HostFileMessageResponse{
+			return c2structs.C2HostFilesMessageResponse{
 				Success: false,
 				Error:   err.Error(),
 			}
 		}
-		for i, _ := range config.Instances {
-			if config.Instances[i].PayloadHostPaths == nil {
-				config.Instances[i].PayloadHostPaths = make(map[string]string)
+		for _, file := range message.Files {
+			fileResponse := c2structs.C2HostFileMessageResponse{
+				AgentFileID: file.AgentFileID,
+				HostURL:     file.HostURL,
+				Success:     true,
 			}
-			if message.Remove {
-				for j, _ := range config.Instances[i].PayloadHostPaths {
-					if config.Instances[i].PayloadHostPaths[j] == message.FileUUID {
-						delete(config.Instances[i].PayloadHostPaths, j)
-					}
+			for i := range config.Instances {
+				if config.Instances[i].PayloadHostPaths == nil {
+					config.Instances[i].PayloadHostPaths = make(map[string]string)
 				}
-			} else {
-				config.Instances[i].PayloadHostPaths[message.HostURL] = message.FileUUID
+				if file.Remove {
+					for hostURL, agentFileID := range config.Instances[i].PayloadHostPaths {
+						if agentFileID == file.AgentFileID {
+							delete(config.Instances[i].PayloadHostPaths, hostURL)
+						}
+					}
+				} else {
+					config.Instances[i].PayloadHostPaths[file.HostURL] = file.AgentFileID
+				}
 			}
+			response.Results = append(response.Results, fileResponse)
 		}
 		err = writeC2JsonConfig(config)
 		if err != nil {
-			return c2structs.C2HostFileMessageResponse{
-				Success: false,
-				Error:   err.Error(),
+			response.Success = false
+			response.Error = err.Error()
+			for i := range response.Results {
+				response.Results[i].Success = false
+				response.Results[i].Error = err.Error()
 			}
+			return response
 		}
-		return c2structs.C2HostFileMessageResponse{
-			Success:               true,
-			RestartInternalServer: true,
-		}
+		response.RestartInternalServer = true
+		return response
 	},
-	OnContainerStartFunction: func(message sharedStructs.ContainerOnStartMessage) sharedStructs.ContainerOnStartMessageResponse {
+	OnContainerStartFunction: func(ctx context.Context, message sharedStructs.ContainerOnStartMessage) sharedStructs.ContainerOnStartMessageResponse {
 		response := sharedStructs.ContainerOnStartMessageResponse{}
 		logging.LogInfo("called onStart function", "operation", message.OperationName)
 		client := mythicGraphql.NewClient("https://127.0.0.1:7443/graphql/", message.APIToken)
-		payloads, err := GetPayloadsQuery(context.Background(), client)
+		payloads, err := GetPayloadsQuery(ctx, client)
 		if err != nil {
 			response.EventLogErrorMessage = fmt.Sprintf("Failed to fetch payloads: %v\n", err)
 			return response
@@ -699,7 +721,7 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 		for _, payload := range payloads.GetPayload() {
 			for _, c2param := range payload.GetC2profileparametersinstances() {
 				if c2param.C2profileparameter.Name == "raw_c2_config" {
-					err = validateAndUpdateConfig(c2param.Value)
+					err = validateAndUpdateConfig(ctx, c2param.Value)
 					if err != nil {
 						response.EventLogErrorMessage += fmt.Sprintf("%s (%s) - %s:\n\t%s\n",
 							payload.Filemetum.Filename_utf8,
@@ -873,6 +895,10 @@ var httpxc2parameters = []c2structs.C2Parameter{
 
 func validateAndUpdateConfig(agentConfig string) error {
 	agentVariation, err := parseInlineAgentVariation(agentConfig)
+func validateAndUpdateConfig(ctx context.Context, agentConfigFileID string) error {
+	agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
+		AgentFileID: agentConfigFileID,
+	})
 	if err != nil {
 		return err
 	}

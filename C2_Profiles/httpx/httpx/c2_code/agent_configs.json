@@ -1,2 +1,54 @@
 {
+  "TEST": {
+    "name": "TEST",
+    "get": {
+      "verb": "GET",
+      "uris": [
+        "/index"
+      ],
+      "client": {
+        "headers": {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
+        },
+        "parameters": null,
+        "domain_specific_headers": null,
+        "message": {
+          "location": "query",
+          "name": "q"
+        },
+        "transforms": null
+      },
+      "server": {
+        "headers": {
+          "Cache-Control": "max-age=0, no-cache",
+          "Server": "Server"
+        },
+        "transforms": null
+      }
+    },
+    "post": {
+      "verb": "POST",
+      "uris": [
+        "/data"
+      ],
+      "client": {
+        "headers": {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
+        },
+        "parameters": null,
+        "domain_specific_headers": null,
+        "message": {
+          "location": "",
+          "name": ""
+        },
+        "transforms": null
+      },
+      "server": {
+        "headers": {
+          "Keep-Alive": "true"
+        },
+        "transforms": null
+      }
+    }
+  }
 }
