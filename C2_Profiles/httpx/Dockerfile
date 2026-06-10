@@ -1,8 +1,10 @@
-FROM golang:1.23 AS builder
+FROM golang:1.25 AS builder
 
 WORKDIR /Mythic/
 
 COPY [".", "."]
+
+RUN go mod tidy && cd httpx/c2_code && go mod tidy && cd /Mythic/
 
 RUN make build
 

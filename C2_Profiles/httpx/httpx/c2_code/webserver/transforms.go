@@ -3,6 +3,7 @@ package webserver
 import (
 	"encoding/base64"
 	"errors"
+	"strings"
 )
 
 func transformBase64(prev []byte, value string) ([]byte, error) {
@@ -22,13 +23,23 @@ func transformBase64URL(prev []byte, value string) ([]byte, error) {
 	return []byte(base64.URLEncoding.EncodeToString(prev)), nil
 }
 func transformBase64URLReverse(prev []byte, value string) ([]byte, error) {
-	decodedLength := base64.URLEncoding.DecodedLen(len(prev))
-	decoded := make([]byte, decodedLength)
-	actualDecoded, err := base64.URLEncoding.Decode(decoded, prev)
-	if err != nil {
-		return nil, err
+	// Accept the URL-safe alphabet, the standard alphabet, missing padding,
+	// and embedded whitespace — agents in the wild aren't always strict.
+	s := strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\r', '\t', ' ':
+			return -1
+		case '+':
+			return '-'
+		case '/':
+			return '_'
+		}
+		return r
+	}, string(prev))
+	if pad := len(s) % 4; pad != 0 {
+		s += strings.Repeat("=", 4-pad)
 	}
-	return decoded[:actualDecoded], nil
+	return base64.URLEncoding.DecodeString(s)
 }
 
 func transformPrepend(prev []byte, value string) ([]byte, error) {

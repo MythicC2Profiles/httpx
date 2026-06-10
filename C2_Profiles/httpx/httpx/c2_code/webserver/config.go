@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type config struct {
@@ -90,6 +91,11 @@ func InitializeLocalAgentConfig() error {
 	if err != nil {
 		logging.LogError(err, "Failed to read in agent_configs.json file")
 		return err
+	}
+	if len(strings.TrimSpace(string(fileData))) == 0 {
+		AgentConfigs = map[string]AgentVariations{}
+		logging.LogInfo("[+] Successfully read in agent_configs.json")
+		return nil
 	}
 	err = json.Unmarshal(fileData, &AgentConfigs)
 	if err != nil {

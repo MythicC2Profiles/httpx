@@ -4,7 +4,5 @@
   "exclude_documentation_payload": false,
   "exclude_documentation_c2": false,
   "exclude_agent_icons": false,
-  "remote_images": {
-    "httpx": "ghcr.io/mythicc2profiles/httpx:v0.0.0.20"
-  }
+  "remote_images": {}
 }

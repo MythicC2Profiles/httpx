@@ -26,6 +26,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var mythicClient = &http.Client{Timeout: 30 * time.Second}
+
 func Initialize(configInstance instanceConfig) *gin.Engine {
 	if mythicConfig.MythicConfig.DebugLevel == "warning" {
 		gin.SetMode(gin.ReleaseMode)
@@ -134,48 +136,78 @@ func InitializeGinLogger(configInstance instanceConfig) gin.HandlerFunc {
 func setRoutes(r *gin.Engine, configInstance instanceConfig) {
 	// define generic get/post routes
 
+	// Track (method, path) pairs that have been claimed by registered
+	// variations so we can (a) tolerate duplicate URIs across variations
+	// without Gin panicking and (b) know whether a custom variation has
+	// already claimed the "POST /" default fallback slot.
+	registered := map[string]bool{}
+	claim := func(method, path string) bool {
+		key := method + " " + path
+		if registered[key] {
+			return false
+		}
+		registered[key] = true
+		return true
+	}
+
 	for _, variation := range AgentConfigs {
-		getProxy := &httputil.ReverseProxy{
-			Transport: &http.Transport{
-				DialContext: (&net.Dialer{
-					Timeout: 30 * time.Second,
-				}).DialContext,
-				MaxIdleConns:    10,
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			}}
 		for _, uri := range variation.Get.URIs {
+			method := "POST"
+			if variation.Get.Verb == "GET" {
+				method = "GET"
+			}
+			if !claim(method, uri) {
+				logging.LogInfo("Skipping duplicate route", "method", method, "uri", uri, "variation", variation.Name)
+				continue
+			}
 			logging.LogInfo("Setting Agent Config GET",
 				"verb", variation.Get.Verb,
 				"uri", uri,
 				"location", variation.Get.Client.Message.Location,
 				"name", variation.Get.Client.Message.Name)
-			if variation.Get.Verb == "GET" {
-				r.GET(uri, proxyRequest(configInstance, getProxy, variation.Get))
+			if method == "GET" {
+				r.GET(uri, proxyRequest(configInstance, variation.Get))
 			} else {
-				r.POST(uri, proxyRequest(configInstance, getProxy, variation.Get))
+				r.POST(uri, proxyRequest(configInstance, variation.Get))
 			}
 		}
-		postProxy := &httputil.ReverseProxy{
-			Transport: &http.Transport{
-				DialContext: (&net.Dialer{
-					Timeout: 30 * time.Second,
-				}).DialContext,
-				MaxIdleConns:    10,
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			}}
 		for _, uri := range variation.Post.URIs {
+			method := "POST"
+			if variation.Post.Verb == "GET" {
+				method = "GET"
+			}
+			if !claim(method, uri) {
+				logging.LogInfo("Skipping duplicate route", "method", method, "uri", uri, "variation", variation.Name)
+				continue
+			}
 			logging.LogInfo("Setting Agent Config POST",
 				"verb", variation.Post.Verb,
 				"uri", uri,
 				"location", variation.Post.Client.Message.Location,
 				"name", variation.Post.Client.Message.Location)
-			if variation.Post.Verb == "GET" {
-				r.GET(uri, proxyRequest(configInstance, postProxy, variation.Post))
+			if method == "GET" {
+				r.GET(uri, proxyRequest(configInstance, variation.Post))
 			} else {
-				r.POST(uri, proxyRequest(configInstance, postProxy, variation.Post))
+				r.POST(uri, proxyRequest(configInstance, variation.Post))
 			}
 		}
 
+	}
+
+	// Always-on fallback for agents built with an empty raw_c2_config
+	// (or built before their variation made it into agent_configs.json):
+	// accept POST / with the message in the body and no transforms.
+	// Only register if a custom variation hasn't already claimed POST /.
+	if claim("POST", "/") {
+		defaultVariation := AgentVariationConfig{
+			Verb: "POST",
+			URIs: []string{"/"},
+			Client: AgentVariationConfigClient{
+				Message: AgentVariationConfigMessage{Location: "body"},
+			},
+		}
+		logging.LogInfo("Registering default fallback route", "method", "POST", "uri", "/", "location", "body")
+		r.POST("/", proxyRequest(configInstance, defaultVariation))
 	}
 	if len(configInstance.PayloadHostPaths) > 0 {
 		for path, value := range configInstance.PayloadHostPaths {
@@ -334,49 +366,54 @@ func getMessageFromClient(req *http.Request, variation AgentVariationConfig) ([]
 		return nil, errors.New("body is empty but message indicated in body")
 	}
 }
-func proxyRequest(configInstance instanceConfig, proxy *httputil.ReverseProxy, variation AgentVariationConfig) gin.HandlerFunc {
+func proxyRequest(configInstance instanceConfig, variation AgentVariationConfig) gin.HandlerFunc {
 	if configInstance.Debug {
 		logging.LogInfo("debug route", "host", mythicConfig.MythicConfig.MythicServerHost, "path", "/agent_message")
 	}
-	director := func(req *http.Request) {
-		req.URL.Scheme = "http"
-		req.Method = "POST"
-		req.URL.Host = fmt.Sprintf("%s:%d", mythicConfig.MythicConfig.MythicServerHost, mythicConfig.MythicConfig.MythicServerPort)
-		req.Host = fmt.Sprintf("%s:%d", mythicConfig.MythicConfig.MythicServerHost, mythicConfig.MythicConfig.MythicServerPort)
-		req.URL.Path = "/agent_message"
-		req.Header.Add("mythic", "httpx")
-		agentMessage, err := getMessageFromClient(req, variation)
+	return func(c *gin.Context) {
+		agentMessage, err := getMessageFromClient(c.Request, variation)
 		if err != nil {
 			logging.LogError(err, "Failed to get message from client to proxy to mythic")
+			c.AbortWithStatus(http.StatusBadGateway)
 			return
 		}
-		req.Body = io.NopCloser(bytes.NewBuffer(agentMessage))
-		req.ContentLength = int64(len(agentMessage))
-	}
-	createResponseFunc := func(resp *http.Response) error {
-		for key, val := range variation.Server.Headers {
-			resp.Header.Set(key, val)
+		upstreamURL := fmt.Sprintf("http://%s:%d/agent_message", mythicConfig.MythicConfig.MythicServerHost, mythicConfig.MythicConfig.MythicServerPort)
+		upstreamReq, err := http.NewRequest(http.MethodPost, upstreamURL, bytes.NewReader(agentMessage))
+		if err != nil {
+			logging.LogError(err, "Failed to create upstream mythic request")
+			c.AbortWithStatus(http.StatusBadGateway)
+			return
 		}
+		upstreamReq.Header.Set("mythic", "httpx")
+		upstreamReq.Header.Set("Content-Length", strconv.Itoa(len(agentMessage)))
+		upstreamReq.ContentLength = int64(len(agentMessage))
+		upstreamReq.TransferEncoding = nil
+
+		resp, err := mythicClient.Do(upstreamReq)
+		if err != nil {
+			logging.LogError(err, "Failed to send decoded agent message to mythic")
+			c.AbortWithStatus(http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+
 		originalMessage, err := io.ReadAll(resp.Body)
 		if err != nil {
 			logging.LogError(err, "failed to get message body from mythic's response")
-			return err
+			c.AbortWithStatus(http.StatusBadGateway)
+			return
 		}
-		resp.Body.Close()
-		agentMessage, err := transformMessageFromServer(originalMessage, variation)
+		agentResponse, err := transformMessageFromServer(originalMessage, variation)
 		if err != nil {
 			logging.LogError(err, "failed to create transformed response for agent")
-			return err
+			c.AbortWithStatus(http.StatusBadGateway)
+			return
 		}
-		resp.Body = io.NopCloser(bytes.NewBuffer(agentMessage))
-		resp.ContentLength = int64(len(agentMessage))
-		resp.Header.Set("Content-Length", strconv.Itoa(len(agentMessage)))
-		return nil
-	}
-	proxy.ModifyResponse = createResponseFunc
-	proxy.Director = director
-	return func(c *gin.Context) {
-		proxy.ServeHTTP(c.Writer, c.Request)
+		for key, val := range variation.Server.Headers {
+			c.Writer.Header().Set(key, val)
+		}
+		c.Writer.Header().Set("Content-Length", strconv.Itoa(len(agentResponse)))
+		c.Data(resp.StatusCode, c.Writer.Header().Get("Content-Type"), agentResponse)
 	}
 }
 
