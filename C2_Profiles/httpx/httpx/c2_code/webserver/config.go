@@ -2,11 +2,12 @@ package webserver
 
 import (
 	"encoding/json"
-	"github.com/MythicMeta/MythicContainer/logging"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/MythicMeta/MythicContainer/logging"
 )
 
 type config struct {
@@ -41,14 +42,18 @@ type AgentVariations struct {
 	Get  AgentVariationConfig `json:"get" toml:"get"`
 	Post AgentVariationConfig `json:"post" toml:"post"`
 }
+type hostedFile struct {
+	AgentFileID   string `json:"agent_file_id"`
+	DownloadToken string `json:"download_token"`
+}
 type instanceConfig struct {
-	Port             int               `json:"port"`
-	KeyPath          string            `json:"key_path"`
-	CertPath         string            `json:"cert_path"`
-	Debug            bool              `json:"debug"`
-	UseSSL           bool              `json:"use_ssl"`
-	PayloadHostPaths map[string]string `json:"payloads"`
-	BindIP           string            `json:"bind_ip"`
+	Port             int                   `json:"port"`
+	KeyPath          string                `json:"key_path"`
+	CertPath         string                `json:"cert_path"`
+	Debug            bool                  `json:"debug"`
+	UseSSL           bool                  `json:"use_ssl"`
+	PayloadHostPaths map[string]hostedFile `json:"payloads"`
+	BindIP           string                `json:"bind_ip"`
 }
 
 var (
@@ -81,11 +86,12 @@ func InitializeLocalConfig() error {
 }
 func InitializeLocalAgentConfig() error {
 	if !fileExists(filepath.Join(getCwdFromExe(), agentConfigPath)) {
-		_, err := os.Create(filepath.Join(getCwdFromExe(), agentConfigPath))
+		file, err := os.Create(filepath.Join(getCwdFromExe(), agentConfigPath))
 		if err != nil {
 			logging.LogError(err, "[-] agent_configs.json doesn't exist and couldn't be created")
 			return err
 		}
+		file.Close()
 	}
 	fileData, err := os.ReadFile(agentConfigPath)
 	if err != nil {

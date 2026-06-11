@@ -8,11 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	c2structs "github.com/MythicMeta/MythicContainer/c2_structs"
-	"github.com/MythicMeta/MythicContainer/logging"
-	"github.com/MythicMeta/MythicContainer/utils/sharedStructs"
-	"github.com/pelletier/go-toml"
-	"golang.org/x/exp/slices"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,19 +15,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	c2structs "github.com/MythicMeta/MythicContainer/c2_structs"
+	"github.com/MythicMeta/MythicContainer/logging"
+	"github.com/MythicMeta/MythicContainer/mythicrpc"
+	"github.com/MythicMeta/MythicContainer/utils/sharedStructs"
+	"github.com/pelletier/go-toml"
+	"golang.org/x/exp/slices"
 )
 
 type config struct {
 	Instances []instanceConfig `json:"instances"`
 }
+type hostedFile struct {
+	AgentFileID   string `json:"agent_file_id"`
+	DownloadToken string `json:"download_token"`
+}
 type instanceConfig struct {
-	Port             int               `json:"port"`
-	KeyPath          string            `json:"key_path"`
-	CertPath         string            `json:"cert_path"`
-	Debug            bool              `json:"debug"`
-	UseSSL           bool              `json:"use_ssl"`
-	PayloadHostPaths map[string]string `json:"payloads"`
-	BindIP           string            `json:"bind_ip"`
+	Port             int                   `json:"port"`
+	KeyPath          string                `json:"key_path"`
+	CertPath         string                `json:"cert_path"`
+	Debug            bool                  `json:"debug"`
+	UseSSL           bool                  `json:"use_ssl"`
+	PayloadHostPaths map[string]hostedFile `json:"payloads"`
+	BindIP           string                `json:"bind_ip"`
 }
 type AgentVariationConfigMessageTransform struct {
 	Action string `json:"action" toml:"action"`
@@ -67,14 +73,16 @@ type AgentVariations struct {
 
 func getC2JsonConfig() (*config, error) {
 	currentConfig := config{}
-	if configBytes, err := os.ReadFile(filepath.Join(".", "httpx", "c2_code", "config.json")); err != nil {
+	configBytes, err := os.ReadFile(filepath.Join(".", "httpx", "c2_code", "config.json"))
+	if err != nil {
 		return nil, err
-	} else if err = json.Unmarshal(configBytes, &currentConfig); err != nil {
+	}
+	err = json.Unmarshal(configBytes, &currentConfig)
+	if err != nil {
 		logging.LogError(err, "Failed to unmarshal config bytes")
 		return nil, err
-	} else {
-		return &currentConfig, nil
 	}
+	return &currentConfig, nil
 }
 func writeC2JsonConfig(cfg *config) error {
 	jsonBytes, err := json.MarshalIndent(*cfg, "", "  ")
@@ -104,22 +112,16 @@ func writeAgentJsonConfig(cfg map[string]AgentVariations) error {
 	return os.WriteFile(filepath.Join(".", "httpx", "c2_code", "agent_configs.json"), jsonBytes, 644)
 }
 
-type rawC2ConfigPreset struct {
-	Filename string `json:"filename"`
-	Label    string `json:"label"`
-	Content  string `json:"content"`
-}
-
-func listRawC2ConfigPresets() ([]rawC2ConfigPreset, error) {
+func listRawC2ConfigPresets() ([]c2structs.ComplexChoice, error) {
 	dir := filepath.Join(".", "httpx", "c2_code", "presets")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []rawC2ConfigPreset{}, nil
+			return []c2structs.ComplexChoice{}, nil
 		}
 		return nil, err
 	}
-	presets := make([]rawC2ConfigPreset, 0, len(entries))
+	presets := make([]c2structs.ComplexChoice, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -134,13 +136,13 @@ func listRawC2ConfigPresets() ([]rawC2ConfigPreset, error) {
 			continue
 		}
 		label := strings.TrimSuffix(entry.Name(), ext)
-		if variation, err := parseInlineAgentVariation(string(content)); err == nil && variation.Name != "" && !strings.HasPrefix(variation.Name, "inline_") {
+		variation, err := parseInlineAgentVariation(string(content))
+		if err == nil && variation.Name != "" && !strings.HasPrefix(variation.Name, "inline_") {
 			label = variation.Name
 		}
-		presets = append(presets, rawC2ConfigPreset{
-			Filename: entry.Name(),
-			Label:    label,
-			Content:  string(content),
+		presets = append(presets, c2structs.ComplexChoice{
+			DisplayValue: label,
+			Value:        string(content),
 		})
 	}
 	return presets, nil
@@ -149,12 +151,38 @@ func listRawC2ConfigPresets() ([]rawC2ConfigPreset, error) {
 func defaultAgentVariation(name string) AgentVariations {
 	return AgentVariations{
 		Name: name,
+		Get: AgentVariationConfig{
+			Verb: "GET",
+			URIs: []string{"/index"},
+			Client: AgentVariationConfigClient{
+				Message: AgentVariationConfigMessage{
+					Location: "query",
+					Name:     "q",
+				},
+				Headers: map[string]string{
+					"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36",
+				},
+			},
+			Server: AgentVariationConfigServer{
+				Headers: map[string]string{
+					"Cache-Control": "max-age=0, no-cache",
+				},
+			},
+		},
 		Post: AgentVariationConfig{
 			Verb: "POST",
-			URIs: []string{"/"},
+			URIs: []string{"/data"},
 			Client: AgentVariationConfigClient{
 				Message: AgentVariationConfigMessage{
 					Location: "body",
+				},
+				Headers: map[string]string{
+					"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36",
+				},
+			},
+			Server: AgentVariationConfigServer{
+				Headers: map[string]string{
+					"Keep-Alive": "true",
 				},
 			},
 		},
@@ -303,11 +331,30 @@ var httpxc2definition = c2structs.C2Profile{
 		}
 		// this is where we will need to update the config with what the agent supplied
 		// this is called each time a new payload is created, so update the server's config with the agent's config
-		agentConfig, err := message.GetStringArg("raw_c2_config")
-		if err != nil {
-			agentConfig = ""
+		agentConfig := ""
+		agentConfigFileID, err := message.GetFileArg("raw_c2_config")
+		if err != nil || agentConfigFileID == "" {
+			agentConfig, err = message.GetStringArg("raw_c2_config_inline")
+			if err != nil {
+				agentConfig = ""
+			}
+		} else if agentConfigFileID != "" {
+			fileFetchResponse, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
+				AgentFileID: agentConfigFileID,
+			})
+			if err != nil {
+				response.Success = false
+				response.Error += err.Error()
+				return response
+			}
+			if !fileFetchResponse.Success {
+				response.Success = false
+				response.Error += fileFetchResponse.Error
+				return response
+			}
+			agentConfig = string(fileFetchResponse.Content)
 		}
-		err = validateAndUpdateConfig(ctx, agentConfigFileID)
+		err = validateAndUpdateConfig(agentConfig)
 		if err != nil {
 			response.Success = false
 			response.Error = err.Error()
@@ -322,19 +369,31 @@ var httpxc2definition = c2structs.C2Profile{
 			Success: true,
 			Message: fmt.Sprintf("Called redirector status check:\n%v", message),
 		}
-		agentConfig, err := message.GetStringArg("raw_c2_config")
-		if err != nil {
-			agentConfig = ""
+		agentConfig := ""
+		agentConfigFileID, err := message.GetFileArg("raw_c2_config")
+		if err != nil || agentConfigFileID == "" {
+			agentConfig, err = message.GetStringArg("raw_c2_config_inline")
+			if err != nil {
+				agentConfig = ""
+			}
+		} else if agentConfigFileID != "" {
+			fileFetchResponse, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
+				AgentFileID: agentConfigFileID,
+			})
+			if err != nil {
+				response.Success = false
+				response.Error += err.Error()
+				return response
+			}
+			if !fileFetchResponse.Success {
+				response.Success = false
+				response.Error += fileFetchResponse.Error
+				return response
+			}
+			agentConfig = string(fileFetchResponse.Content)
 		}
 		agentVariation, err := parseInlineAgentVariation(agentConfig)
-		agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
-			AgentFileID: agentConfigFileID,
-		})
-		if err != nil {
-			response.Success = false
-			response.Error += err.Error()
-			return response
-		}
+
 		output := "#mod_rewrite rules generated from @AndrewChiles' project https://github.com/threatexpress/mythic2modrewrite:\n"
 		getUA := ""
 		for key, val := range agentVariation.Get.Client.Headers {
@@ -427,14 +486,30 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 	},
 	GetIOCFunction: func(ctx context.Context, message c2structs.C2GetIOCMessage) c2structs.C2GetIOCMessageResponse {
 		response := c2structs.C2GetIOCMessageResponse{Success: true}
-		agentConfig, err := message.GetStringArg("raw_c2_config")
-		if err != nil {
-			agentConfig = ""
+		agentConfig := ""
+		agentConfigFileID, err := message.GetFileArg("raw_c2_config")
+		if err != nil || agentConfigFileID == "" {
+			agentConfig, err = message.GetStringArg("raw_c2_config_inline")
+			if err != nil {
+				agentConfig = ""
+			}
+		} else if agentConfigFileID != "" {
+			fileFetchResponse, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
+				AgentFileID: agentConfigFileID,
+			})
+			if err != nil {
+				response.Success = false
+				response.Error += err.Error()
+				return response
+			}
+			if !fileFetchResponse.Success {
+				response.Success = false
+				response.Error += fileFetchResponse.Error
+				return response
+			}
+			agentConfig = string(fileFetchResponse.Content)
 		}
 		agentVariation, err := parseInlineAgentVariation(agentConfig)
-		agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
-			AgentFileID: agentConfigFileID,
-		})
 		if err != nil {
 			response.Success = false
 			response.Error += err.Error()
@@ -486,14 +561,30 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 	},
 	SampleMessageFunction: func(ctx context.Context, message c2structs.C2SampleMessageMessage) c2structs.C2SampleMessageResponse {
 		response := c2structs.C2SampleMessageResponse{Success: true, Message: "\n"}
-		agentConfig, err := message.GetStringArg("raw_c2_config")
-		if err != nil {
-			agentConfig = ""
+		agentConfig := ""
+		agentConfigFileID, err := message.GetFileArg("raw_c2_config")
+		if err != nil || agentConfigFileID == "" {
+			agentConfig, err = message.GetStringArg("raw_c2_config_inline")
+			if err != nil {
+				agentConfig = ""
+			}
+		} else if agentConfigFileID != "" {
+			fileFetchResponse, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
+				AgentFileID: agentConfigFileID,
+			})
+			if err != nil {
+				response.Success = false
+				response.Error += err.Error()
+				return response
+			}
+			if !fileFetchResponse.Success {
+				response.Success = false
+				response.Error += fileFetchResponse.Error
+				return response
+			}
+			agentConfig = string(fileFetchResponse.Content)
 		}
 		agentVariation, err := parseInlineAgentVariation(agentConfig)
-		agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
-			AgentFileID: agentConfigFileID,
-		})
 		if err != nil {
 			response.Success = false
 			response.Error += err.Error()
@@ -667,7 +758,7 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 			Success: true,
 			Results: make([]c2structs.C2HostFileMessageResponse, 0, len(message.Files)),
 		}
-		config, err := getC2JsonConfig()
+		c2Config, err := getC2JsonConfig()
 		if err != nil {
 			return c2structs.C2HostFilesMessageResponse{
 				Success: false,
@@ -680,23 +771,22 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 				HostURL:     file.HostURL,
 				Success:     true,
 			}
-			for i := range config.Instances {
-				if config.Instances[i].PayloadHostPaths == nil {
-					config.Instances[i].PayloadHostPaths = make(map[string]string)
+			for i := range c2Config.Instances {
+				if c2Config.Instances[i].PayloadHostPaths == nil {
+					c2Config.Instances[i].PayloadHostPaths = make(map[string]hostedFile)
 				}
 				if file.Remove {
-					for hostURL, agentFileID := range config.Instances[i].PayloadHostPaths {
-						if agentFileID == file.AgentFileID {
-							delete(config.Instances[i].PayloadHostPaths, hostURL)
-						}
-					}
+					delete(c2Config.Instances[i].PayloadHostPaths, file.HostURL)
 				} else {
-					config.Instances[i].PayloadHostPaths[file.HostURL] = file.AgentFileID
+					c2Config.Instances[i].PayloadHostPaths[file.HostURL] = hostedFile{
+						AgentFileID:   file.AgentFileID,
+						DownloadToken: file.DownloadToken,
+					}
 				}
 			}
 			response.Results = append(response.Results, fileResponse)
 		}
-		err = writeC2JsonConfig(config)
+		err = writeC2JsonConfig(c2Config)
 		if err != nil {
 			response.Success = false
 			response.Error = err.Error()
@@ -720,8 +810,36 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 		}
 		for _, payload := range payloads.GetPayload() {
 			for _, c2param := range payload.GetC2profileparametersinstances() {
-				if c2param.C2profileparameter.Name == "raw_c2_config" {
-					err = validateAndUpdateConfig(ctx, c2param.Value)
+				if c2param.C2profileparameter.Name == "raw_c2_config_inline" {
+					err = validateAndUpdateConfig(c2param.Value)
+					if err != nil {
+						response.EventLogErrorMessage += fmt.Sprintf("%s (%s) - %s:\n\t%s\n",
+							payload.Filemetum.Filename_utf8,
+							payload.Payloadtype.Name,
+							payload.Description,
+							err.Error())
+					}
+				} else if c2param.C2profileparameter.Name == "raw_c2_config" {
+					fileFetchResponse, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
+						AgentFileID: c2param.Value,
+					})
+					if err != nil {
+						response.EventLogErrorMessage += fmt.Sprintf("%s (%s) - %s:\n\t%s\n",
+							payload.Filemetum.Filename_utf8,
+							payload.Payloadtype.Name,
+							payload.Description,
+							err.Error())
+						continue
+					}
+					if !fileFetchResponse.Success {
+						response.EventLogErrorMessage += fmt.Sprintf("%s (%s) - %s:\n\t%s\n",
+							payload.Filemetum.Filename_utf8,
+							payload.Payloadtype.Name,
+							payload.Description,
+							err.Error())
+						continue
+					}
+					err = validateAndUpdateConfig(string(fileFetchResponse.Content))
 					if err != nil {
 						response.EventLogErrorMessage += fmt.Sprintf("%s (%s) - %s:\n\t%s\n",
 							payload.Filemetum.Filename_utf8,
@@ -735,20 +853,7 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 		response.RestartInternalServer = true
 		return response
 	},
-	CustomRPCFunctions: map[string]func(message c2structs.C2RPCOtherServiceRPCMessage) c2structs.C2RPCOtherServiceRPCMessageResponse{
-		"list_raw_c2_config_presets": func(message c2structs.C2RPCOtherServiceRPCMessage) c2structs.C2RPCOtherServiceRPCMessageResponse {
-			response := c2structs.C2RPCOtherServiceRPCMessageResponse{Result: map[string]interface{}{}}
-			presets, err := listRawC2ConfigPresets()
-			if err != nil {
-				response.Success = false
-				response.Error = err.Error()
-				return response
-			}
-			response.Success = true
-			response.Result["presets"] = presets
-			return response
-		},
-	},
+	CustomRPCFunctions: map[string]func(ctx context.Context, message c2structs.C2RPCOtherServiceRPCMessage) c2structs.C2RPCOtherServiceRPCMessageResponse{},
 }
 var httpxc2parameters = []c2structs.C2Parameter{
 	{
@@ -883,22 +988,39 @@ var httpxc2parameters = []c2structs.C2Parameter{
 		Name:          "raw_c2_config",
 		DisplayName:   "Raw C2 Config",
 		GroupName:     "Advanced",
-		Description:   "Inline agent configuration in JSON or TOML. Leave empty to use the default no-transform profile.",
-		DefaultValue:  "",
-		FormatString:  "ui:config_editor:json_toml:presets_fn=list_raw_c2_config_presets",
-		ParameterType: c2structs.C2_PARAMETER_TYPE_STRING,
-		FormSchema:    rawC2ConfigSchema(),
+		Description:   "File agent configuration in JSON or TOML.",
+		ParameterType: c2structs.C2_PARAMETER_TYPE_FILE,
 		Required:      false,
-		UiPosition:    12,
+		UiPosition:    13,
+	},
+	{
+		Name:         "raw_c2_config_inline",
+		DisplayName:  "Raw C2 Config Inline",
+		GroupName:    "Advanced",
+		Description:  "Inline agent configuration in JSON or TOML. Leave empty to use the default no-transform profile.",
+		DefaultValue: "",
+		DynamicQueryFunction: func(ctx context.Context, message c2structs.C2RPCDynamicQueryC2ParameterFunctionMessage) c2structs.C2RPCDynamicQueryC2ParameterFunctionMessageResponse {
+			complexChoices, err := listRawC2ConfigPresets()
+			if err != nil {
+				return c2structs.C2RPCDynamicQueryC2ParameterFunctionMessageResponse{
+					Success: false,
+					Error:   err.Error(),
+				}
+			}
+			return c2structs.C2RPCDynamicQueryC2ParameterFunctionMessageResponse{
+				Success:        true,
+				ComplexChoices: complexChoices,
+			}
+		},
+		ParameterType:    c2structs.C2_PARAMETER_TYPE_JSON_STRING,
+		JsonStringSchema: rawC2ConfigSchema(),
+		Required:         false,
+		UiPosition:       12,
 	},
 }
 
 func validateAndUpdateConfig(agentConfig string) error {
 	agentVariation, err := parseInlineAgentVariation(agentConfig)
-func validateAndUpdateConfig(ctx context.Context, agentConfigFileID string) error {
-	agentConfigContents, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
-		AgentFileID: agentConfigFileID,
-	})
 	if err != nil {
 		return err
 	}

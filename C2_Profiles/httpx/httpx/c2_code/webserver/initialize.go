@@ -29,10 +29,10 @@ import (
 var mythicClient = &http.Client{Timeout: 30 * time.Second}
 
 func Initialize(configInstance instanceConfig) *gin.Engine {
-	if mythicConfig.MythicConfig.DebugLevel == "warning" {
-		gin.SetMode(gin.ReleaseMode)
-	} else {
+	if configInstance.Debug {
 		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
 	gin.DisableConsoleColor()
@@ -210,14 +210,14 @@ func setRoutes(r *gin.Engine, configInstance instanceConfig) {
 		r.POST("/", proxyRequest(configInstance, defaultVariation))
 	}
 	if len(configInstance.PayloadHostPaths) > 0 {
-		for path, value := range configInstance.PayloadHostPaths {
-			localVal := value
+		for path, fileData := range configInstance.PayloadHostPaths {
 			directorForFiles := func(req *http.Request) {
 				req.URL.Scheme = "http"
 				req.URL.Host = fmt.Sprintf("%s:%d", mythicConfig.MythicConfig.MythicServerHost, mythicConfig.MythicConfig.MythicServerPort)
 				req.Host = fmt.Sprintf("%s:%d", mythicConfig.MythicConfig.MythicServerHost, mythicConfig.MythicConfig.MythicServerPort)
-				req.URL.Path = fmt.Sprintf("/direct/download/%s", localVal)
+				req.URL.Path = fmt.Sprintf("/direct/download/%s", fileData.AgentFileID)
 				req.Header.Add("mythic", "httpx")
+				req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", fileData.DownloadToken))
 			}
 			proxyForFiles := httputil.ReverseProxy{Director: directorForFiles,
 				Transport: &http.Transport{
@@ -227,7 +227,7 @@ func setRoutes(r *gin.Engine, configInstance instanceConfig) {
 					MaxIdleConns:    10,
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 				}}
-			r.GET(path, generateServeFile(configInstance, fmt.Sprintf("%s", localVal), &proxyForFiles))
+			r.GET(path, generateServeFile(configInstance, fmt.Sprintf("%s", fileData.AgentFileID), &proxyForFiles))
 		}
 	}
 }
