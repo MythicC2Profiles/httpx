@@ -2,16 +2,16 @@ module MyContainer
 
 go 1.25.1
 
-replace github.com/MythicMeta/MythicContainer => ../../../../MythicMeta/MythicContainer
+//replace github.com/MythicMeta/MythicContainer => ../../../../MythicMeta/MythicContainer
 
 require (
 	github.com/Khan/genqlient v0.8.0
-	github.com/MythicMeta/MythicContainer v1.6.4
 	github.com/pelletier/go-toml v1.9.5
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
 )
 
 require (
+	github.com/MythicMeta/MythicContainer v1.7.0-rc2 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/alexflint/go-arg v1.5.1 // indirect
 	github.com/alexflint/go-scalar v1.2.0 // indirect
