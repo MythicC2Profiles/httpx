@@ -18,7 +18,6 @@ import (
 
 	c2structs "github.com/MythicMeta/MythicContainer/c2_structs"
 	"github.com/MythicMeta/MythicContainer/logging"
-	"github.com/MythicMeta/MythicContainer/mythicrpc"
 	"github.com/MythicMeta/MythicContainer/utils/sharedStructs"
 	"github.com/pelletier/go-toml"
 	"golang.org/x/exp/slices"
@@ -331,28 +330,11 @@ var httpxc2definition = c2structs.C2Profile{
 		}
 		// this is where we will need to update the config with what the agent supplied
 		// this is called each time a new payload is created, so update the server's config with the agent's config
-		agentConfig := ""
-		agentConfigFileID, err := message.GetFileArg("raw_c2_config")
-		if err != nil || agentConfigFileID == "" {
-			agentConfig, err = message.GetStringArg("raw_c2_config_inline")
-			if err != nil {
-				agentConfig = ""
-			}
-		} else if agentConfigFileID != "" {
-			fileFetchResponse, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
-				AgentFileID: agentConfigFileID,
-			})
-			if err != nil {
-				response.Success = false
-				response.Error += err.Error()
-				return response
-			}
-			if !fileFetchResponse.Success {
-				response.Success = false
-				response.Error += fileFetchResponse.Error
-				return response
-			}
-			agentConfig = string(fileFetchResponse.Content)
+		agentConfig, err := message.GetStringArg("raw_c2_config")
+		if err != nil {
+			response.Success = false
+			response.Error = err.Error()
+			return response
 		}
 		err = validateAndUpdateConfig(agentConfig)
 		if err != nil {
@@ -369,28 +351,11 @@ var httpxc2definition = c2structs.C2Profile{
 			Success: true,
 			Message: fmt.Sprintf("Called redirector status check:\n%v", message),
 		}
-		agentConfig := ""
-		agentConfigFileID, err := message.GetFileArg("raw_c2_config")
-		if err != nil || agentConfigFileID == "" {
-			agentConfig, err = message.GetStringArg("raw_c2_config_inline")
-			if err != nil {
-				agentConfig = ""
-			}
-		} else if agentConfigFileID != "" {
-			fileFetchResponse, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
-				AgentFileID: agentConfigFileID,
-			})
-			if err != nil {
-				response.Success = false
-				response.Error += err.Error()
-				return response
-			}
-			if !fileFetchResponse.Success {
-				response.Success = false
-				response.Error += fileFetchResponse.Error
-				return response
-			}
-			agentConfig = string(fileFetchResponse.Content)
+		agentConfig, err := message.GetStringArg("raw_c2_config")
+		if err != nil {
+			response.Success = false
+			response.Error += err.Error()
+			return response
 		}
 		agentVariation, err := parseInlineAgentVariation(agentConfig)
 
@@ -486,28 +451,11 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 	},
 	GetIOCFunction: func(ctx context.Context, message c2structs.C2GetIOCMessage) c2structs.C2GetIOCMessageResponse {
 		response := c2structs.C2GetIOCMessageResponse{Success: true}
-		agentConfig := ""
-		agentConfigFileID, err := message.GetFileArg("raw_c2_config")
-		if err != nil || agentConfigFileID == "" {
-			agentConfig, err = message.GetStringArg("raw_c2_config_inline")
-			if err != nil {
-				agentConfig = ""
-			}
-		} else if agentConfigFileID != "" {
-			fileFetchResponse, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
-				AgentFileID: agentConfigFileID,
-			})
-			if err != nil {
-				response.Success = false
-				response.Error += err.Error()
-				return response
-			}
-			if !fileFetchResponse.Success {
-				response.Success = false
-				response.Error += fileFetchResponse.Error
-				return response
-			}
-			agentConfig = string(fileFetchResponse.Content)
+		agentConfig, err := message.GetStringArg("raw_c2_config")
+		if err != nil {
+			response.Success = false
+			response.Error += err.Error()
+			return response
 		}
 		agentVariation, err := parseInlineAgentVariation(agentConfig)
 		if err != nil {
@@ -561,28 +509,11 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 	},
 	SampleMessageFunction: func(ctx context.Context, message c2structs.C2SampleMessageMessage) c2structs.C2SampleMessageResponse {
 		response := c2structs.C2SampleMessageResponse{Success: true, Message: "\n"}
-		agentConfig := ""
-		agentConfigFileID, err := message.GetFileArg("raw_c2_config")
-		if err != nil || agentConfigFileID == "" {
-			agentConfig, err = message.GetStringArg("raw_c2_config_inline")
-			if err != nil {
-				agentConfig = ""
-			}
-		} else if agentConfigFileID != "" {
-			fileFetchResponse, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
-				AgentFileID: agentConfigFileID,
-			})
-			if err != nil {
-				response.Success = false
-				response.Error += err.Error()
-				return response
-			}
-			if !fileFetchResponse.Success {
-				response.Success = false
-				response.Error += fileFetchResponse.Error
-				return response
-			}
-			agentConfig = string(fileFetchResponse.Content)
+		agentConfig, err := message.GetStringArg("raw_c2_config")
+		if err != nil {
+			response.Success = false
+			response.Error += err.Error()
+			return response
 		}
 		agentVariation, err := parseInlineAgentVariation(agentConfig)
 		if err != nil {
@@ -810,36 +741,8 @@ RewriteCond %%{HTTP_USER_AGENT} "%s"`
 		}
 		for _, payload := range payloads.GetPayload() {
 			for _, c2param := range payload.GetC2profileparametersinstances() {
-				if c2param.C2profileparameter.Name == "raw_c2_config_inline" {
+				if c2param.C2profileparameter.Name == "raw_c2_config" {
 					err = validateAndUpdateConfig(c2param.Value)
-					if err != nil {
-						response.EventLogErrorMessage += fmt.Sprintf("%s (%s) - %s:\n\t%s\n",
-							payload.Filemetum.Filename_utf8,
-							payload.Payloadtype.Name,
-							payload.Description,
-							err.Error())
-					}
-				} else if c2param.C2profileparameter.Name == "raw_c2_config" {
-					fileFetchResponse, err := mythicrpc.SendMythicRPCFileGetContent(ctx, mythicrpc.MythicRPCFileGetContentMessage{
-						AgentFileID: c2param.Value,
-					})
-					if err != nil {
-						response.EventLogErrorMessage += fmt.Sprintf("%s (%s) - %s:\n\t%s\n",
-							payload.Filemetum.Filename_utf8,
-							payload.Payloadtype.Name,
-							payload.Description,
-							err.Error())
-						continue
-					}
-					if !fileFetchResponse.Success {
-						response.EventLogErrorMessage += fmt.Sprintf("%s (%s) - %s:\n\t%s\n",
-							payload.Filemetum.Filename_utf8,
-							payload.Payloadtype.Name,
-							payload.Description,
-							err.Error())
-						continue
-					}
-					err = validateAndUpdateConfig(string(fileFetchResponse.Content))
 					if err != nil {
 						response.EventLogErrorMessage += fmt.Sprintf("%s (%s) - %s:\n\t%s\n",
 							payload.Filemetum.Filename_utf8,
@@ -985,17 +888,8 @@ var httpxc2parameters = []c2structs.C2Parameter{
 		UiPosition:    11,
 	},
 	{
-		Name:          "raw_c2_config",
-		DisplayName:   "Raw C2 Config",
-		GroupName:     "Advanced",
-		Description:   "File agent configuration in JSON or TOML.",
-		ParameterType: c2structs.C2_PARAMETER_TYPE_FILE,
-		Required:      false,
-		UiPosition:    13,
-	},
-	{
-		Name:         "raw_c2_config_inline",
-		DisplayName:  "Raw C2 Config Inline",
+		Name:         "raw_c2_config",
+		DisplayName:  "Raw C2 Config",
 		GroupName:    "Advanced",
 		Description:  "Inline agent configuration in JSON or TOML. Leave empty to use the default no-transform profile.",
 		DefaultValue: "",

@@ -3,8 +3,10 @@ package mythicGraphql
 import (
 	"crypto/tls"
 	"errors"
-	"github.com/Khan/genqlient/graphql"
+	"fmt"
 	"net/http"
+
+	"github.com/Khan/genqlient/graphql"
 )
 
 type authedTransport struct {
@@ -13,7 +15,7 @@ type authedTransport struct {
 }
 
 func (t *authedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header.Set("apitoken", t.key)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer: %s", t.key))
 	if t.key == "" {
 		return nil, errors.New("no auth token provided")
 	}
