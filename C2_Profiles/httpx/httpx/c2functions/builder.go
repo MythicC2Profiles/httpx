@@ -187,6 +187,15 @@ func defaultAgentVariation(name string) AgentVariations {
 		},
 	}
 }
+func defaultAgentVariationString(name string) string {
+	variation := defaultAgentVariation(name)
+	jsonBytes, err := json.MarshalIndent(variation, "", "  ")
+	if err != nil {
+		logging.LogError(err, "Failed to marshal variation")
+		return ""
+	}
+	return string(jsonBytes)
+}
 
 func parseInlineAgentVariation(agentConfig string) (AgentVariations, error) {
 	normalizedConfig := strings.TrimSpace(agentConfig)
@@ -892,7 +901,7 @@ var httpxc2parameters = []c2structs.C2Parameter{
 		DisplayName:  "Raw C2 Config",
 		GroupName:    "Advanced",
 		Description:  "Inline agent configuration in JSON or TOML. Leave empty to use the default no-transform profile.",
-		DefaultValue: "",
+		DefaultValue: defaultAgentVariationString("TEST"),
 		DynamicQueryFunction: func(ctx context.Context, message c2structs.C2RPCDynamicQueryC2ParameterFunctionMessage) c2structs.C2RPCDynamicQueryC2ParameterFunctionMessageResponse {
 			complexChoices, err := listRawC2ConfigPresets()
 			if err != nil {
